@@ -16,9 +16,15 @@ class CatalogProductRecord(BaseModel):
     name: str = ""
     enabled: StrictBool = True
     delivery_validation_required: StrictBool = True
+    postal_code: str = ""
 
     @field_validator("country")
     @classmethod
     def normalize_country(cls, value: str) -> str:
         return value.strip().upper()
+
+    @field_validator("postal_code")
+    @classmethod
+    def normalize_postal_code(cls, value: str) -> str:
+        return value.strip()
 

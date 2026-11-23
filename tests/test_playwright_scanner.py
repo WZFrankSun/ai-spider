@@ -21,6 +21,7 @@ def product() -> Product:
         url="https://example.test/product",
         page_type="product_detail",
         roi_profile_id="default",
+        delivery_validation_required=False,
     )
 
 
@@ -353,6 +354,108 @@ class PlaywrightScannerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(observation.full_screenshot_path, "/tmp/full-1.png")
         self.assertEqual(observation.roi_screenshot_path, "/tmp/roi-1.png")
         self.assertEqual(manager.closed, ["session-1"])
+
+
+class DeliverySetupTests(unittest.IsolatedAsyncioTestCase):
+    """配送邮编设置属于尽力而为，失败不能把整次扫描变成技术故障。"""
+
+    def build(self, page, *, postal_code="10115", delivery_timeout_ms=20000):
+        manager = FakeBrowserManager(page)
+        scanner = PlaywrightScanner(
+            browser_manager=manager,
+            platform_registry=FakeRegistry,
+            observation_factory=healthy_observation,
+            artifact_store=RecordingArtifactStore(),
+            roi_profile_loader=FakeRoiProfileLoader(),
+            roi_cropper=FakeRoiCropper(),
+            delivery_timeout_ms=delivery_timeout_ms,
+        )
+        return scanner
+
+    @staticmethod
+    def delivery_product(**kwargs) -> Product:
+        fields = {
+            "id": "DE-001",
+            "country": "DE",
+            "platform": "amazon",
+            "sku": "SKU-001",
+            "url": "https://example.test/product",
+            "page_type": "product_detail",
+            "roi_profile_id": "default",
+        }
+        fields.update(kwargs)
+        return Product(**fields)
+
+    def test_postal_code_prefers_product_override(self):
+        scanner = self.build(FakePage())
+        current = self.delivery_product(postal_code="10117")
+        self.assertEqual(scanner._resolve_postal_code(current), "10117")
+
+    def test_postal_code_falls_back_to_country_default(self):
+        scanner = self.build(FakePage())
+        current = self.delivery_product(country="IT")
+        self.assertEqual(scanner._resolve_postal_code(current), "00174")
+
+    def test_postal_code_ignores_platform_value_from_another_country(self):
+        scanner = self.build(FakePage())
+        current = self.delivery_product(country="FR")
+        # amazon.yaml 配置的是德国邮编 10115，法国商品不能沿用
+        self.assertEqual(scanner._resolve_postal_code(current), "75001")
+
+    def test_delivery_is_skipped_when_product_exempts_validation(self):
+        scanner = self.build(FakePage())
+        current = self.delivery_product(delivery_validation_required=False)
+        self.assertFalse(scanner._should_configure_delivery(current))
+
+    async def test_delivery_failure_does_not_turn_scan_into_technical_failure(self):
+        from unittest.mock import AsyncMock, Mock
+
+        page = FakePage()
+        page.locator = Mock(
+            return_value=Mock(
+                first=Mock(
+                    count=AsyncMock(return_value=0),
+                    is_visible=AsyncMock(return_value=False),
+                    inner_text=AsyncMock(return_value=""),
+                    click=AsyncMock(side_effect=RuntimeError("dialog blocked")),
+                )
+            )
+        )
+        scanner = self.build(page)
+        profile = FakeProfile()
+        profile.cookies = {}
+        profile.location = {}
+        scanner.platform_registry = Mock()
+        scanner.platform_registry.load.return_value = profile
+
+        observation = await scanner.scan(self.delivery_product())
+
+        self.assertEqual(observation.status, ProductScanStatus.HEALTHY)
+        self.assertIsNotNone(observation.error_code)
+        self.assertEqual(observation.error_code, "DELIVERY_REGION_UNVERIFIED")
+        self.assertIn("delivery", observation.error_message)
+
+    async def test_delivery_timeout_is_reported_but_scan_continues(self):
+        import asyncio
+        from unittest.mock import Mock
+
+        page = FakePage()
+        scanner = self.build(page, delivery_timeout_ms=50)
+        profile = FakeProfile()
+        profile.cookies = {}
+        profile.location = {}
+        scanner.platform_registry = Mock()
+        scanner.platform_registry.load.return_value = profile
+
+        async def never_finishes(*args, **kwargs):
+            await asyncio.sleep(10)
+
+        scanner._configure_delivery = never_finishes
+
+        observation = await scanner.scan(self.delivery_product())
+
+        self.assertEqual(observation.status, ProductScanStatus.HEALTHY)
+        self.assertIn("timed out", observation.error_message)
 
 
 if __name__ == "__main__":

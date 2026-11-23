@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 from datetime import datetime, timezone
 from enum import Enum
@@ -17,6 +18,19 @@ from app.monitoring.application.ports import ArtifactMetadata, ArtifactStore
 from app.monitoring.application.real_observation import find_usable_add_to_cart_button
 from app.monitoring.domain.models import Product, ProductScanStatus, ScanObservation
 from app.platforms.registry import PlatformRegistry
+
+
+_DEFAULT_POSTAL_CODES = {
+    "DE": "10115",
+    "IT": "00174",
+    "FR": "75001",
+    "ES": "28001",
+    "GB": "SW1A 1AA",
+    "NL": "1012",
+    "SE": "111 22",
+    "BE": "1049",
+    "PL": "00-001",
+}
 
 
 class ScanErrorCode(str, Enum):
@@ -61,6 +75,7 @@ class PlaywrightScanner:
         timeout_ms: int = 30_000,
         delivery_diagnostic_root: str | Path = "output/delivery-diagnostics",
         delivery_validation_exempt_ids: set[str] | None = None,
+        delivery_timeout_ms: int = 20_000,
     ):
         self.browser_manager = browser_manager or BrowserManager()
         self.platform_registry = platform_registry
@@ -71,6 +86,7 @@ class PlaywrightScanner:
         self.timeout_ms = timeout_ms
         self.delivery_diagnostic_root = Path(delivery_diagnostic_root)
         self.delivery_validation_exempt_ids = delivery_validation_exempt_ids or set()
+        self.delivery_timeout_ms = delivery_timeout_ms
 
     async def scan(self, product: Product) -> ScanObservation:
         started_at = datetime.now(timezone.utc)
@@ -158,7 +174,11 @@ class PlaywrightScanner:
                     full_screenshot_path=evidence,
                 )
 
-            # Delivery setup and postal-code validation are temporarily disabled.
+            # Delivery setup is best-effort: a failed postal-code setup must not
+            # turn the whole scan into a technical failure, because the
+            # add-to-cart judgement relies on the DOM button and OCR, not on the
+            # delivery region. Diagnostics are kept for manual review.
+            delivery_error = ""
 
             try:
                 selectors = profile.resolve_ready_selectors(product.url)
@@ -202,6 +222,23 @@ class PlaywrightScanner:
                     started_at,
                     full_screenshot_path=evidence,
                 )
+
+            # The delivery dialog can be slow or stuck. Bound it so a blocked
+            # postal-code setup cannot stall the whole scan.
+            if self._should_configure_delivery(product):
+                try:
+                    delivery_error = await asyncio.wait_for(
+                        self._configure_delivery(page, profile, product),
+                        timeout=self.delivery_timeout_ms / 1000,
+                    ) or ""
+                except asyncio.TimeoutError:
+                    delivery_error = (
+                        f"delivery setup timed out after {self.delivery_timeout_ms}ms"
+                    )
+                except Exception as exc:
+                    delivery_error = f"delivery setup failed: {type(exc).__name__}: {exc}"
+                # 无论成功与否都要收掉弹窗，否则残留弹窗会遮挡加购按钮。
+                await self._close_delivery_dialog(page)
 
             try:
                 screenshot = await page.screenshot(full_page=True)
@@ -300,12 +337,16 @@ class PlaywrightScanner:
                     roi_screenshot_path=roi_artifact_path,
                 )
 
-            return self._with_timestamps(
+            observation = self._with_timestamps(
                 observation,
                 started_at,
                 full_screenshot_path=full_artifact_path,
                 roi_screenshot_path=roi_artifact_path,
             )
+            if delivery_error:
+                observation.error_code = observation.error_code or ScanErrorCode.DELIVERY_REGION_UNVERIFIED.value
+                observation.error_message = _join_diagnostics(observation.error_message, delivery_error)
+            return observation
         except Exception as exc:
             return self._failure(
                 ScanErrorCode.UNEXPECTED_SCAN_ERROR,
@@ -389,48 +430,111 @@ class PlaywrightScanner:
             # Screenshot failure must not mask the original page validation error.
             return None
 
+    def _should_configure_delivery(self, product) -> bool:
+        """配送校验只在显式要求且能取到邮编时执行。"""
+        if not getattr(product, "delivery_validation_required", True):
+            return False
+        if product.id in self.delivery_validation_exempt_ids:
+            return False
+        return bool(self._resolve_postal_code(product))
+
+    def _resolve_postal_code(self, product) -> str:
+        """邮编优先级：商品自定义 > 国家默认 > 平台配置（限同国家）。
+
+        平台 YAML 里的 postal_code 通常只对配置的国家有效，例如 amazon.yaml
+        里的 10115 属于德国，意大利或法国商品必须用各自的邮编。
+        """
+        override = str(getattr(product, "postal_code", "") or "").strip()
+        if override:
+            return override
+        country = product.country.upper()
+        default = _DEFAULT_POSTAL_CODES.get(country, "")
+        if default:
+            return default
+        try:
+            profile = self.platform_registry.load(product.platform)
+        except Exception:
+            return ""
+        delivery = getattr(profile, "delivery", {}) or {}
+        configured_country = str(delivery.get("country", "") or "").strip().upper()
+        if configured_country and configured_country != country:
+            return ""
+        return str(delivery.get("postal_code", "") or "").strip()
+
     async def _configure_delivery(self, page, profile, product) -> str | None:
         delivery = getattr(profile, "delivery", {})
         location = getattr(profile, "location", {})
-        postal_code = str(delivery.get("postal_code", "")).strip()
+        postal_code = self._resolve_postal_code(product)
         if not postal_code:
             return None
         diagnostic_dir = self.delivery_diagnostic_root / product.country / product.platform / product.id
         diagnostic_dir.mkdir(parents=True, exist_ok=True)
-        details = {"delivery_text_before": "", "postal_input_found": False, "postal_input_value": "", "submit_succeeded": False, "confirm_button_found": False, "delivery_text_after": ""}
+        details = {"delivery_text_before": "", "postal_input_found": False, "postal_input_value": "", "submit_succeeded": False, "confirm_button_found": False, "delivery_text_after": "", "stage": "start"}
         try:
-            result = page.locator(location.get("result", "#glow-ingress-block"))
+            result = page.locator(location.get("result", "#glow-ingress-block")).first
             if await result.count():
                 details["delivery_text_before"] = (await result.inner_text()).strip()
             await page.screenshot(path=str(diagnostic_dir / "delivery_before.png"), full_page=False)
-            trigger = page.locator(location.get("trigger", "#nav-global-location-popover-link"))
-            await trigger.click()
-            await page.wait_for_timeout(1200)
+            trigger = page.locator(location.get("trigger", "#nav-global-location-popover-link")).first
+            details["stage"] = "click trigger"
+            await trigger.click(timeout=min(self.timeout_ms, 10_000))
+            await page.wait_for_timeout(1500)
+            details["stage"] = "dialog open"
             await page.screenshot(path=str(diagnostic_dir / "delivery_dialog.png"), full_page=False)
-            field = page.locator(location.get("postal_input", "#GLUXZipUpdateInput"))
+            field = page.locator(location.get("postal_input", "#GLUXZipUpdateInput")).first
             if not await field.count() or not await field.is_visible():
                 field = await self._find_delivery_postal_input(page)
             details["postal_input_found"] = bool(await field.count() and await field.is_visible())
             if not details["postal_input_found"]:
+                await self._close_delivery_dialog(page)
                 return self._delivery_error(details, diagnostic_dir, "postal input not found or not visible")
-            await field.fill("")
-            await field.fill(postal_code)
+            details["stage"] = "fill postal code"
+            # 亚马逊的邮编框对 fill() 的响应不稳定（会挂在输入校验上），
+            # 逐字输入更可靠；填完直接回车触发校验。
+            try:
+                await field.click(timeout=5000)
+                await field.fill("", timeout=5000)
+            except Exception:
+                pass
+            await field.type(postal_code, delay=60, timeout=8000)
             details["postal_input_value"] = await field.input_value()
-            submit = page.locator(location.get("submit", "#GLUXZipUpdate .a-button-input"))
+            details["stage"] = "click submit"
+            submit = page.locator(location.get("submit", "#GLUXZipUpdate .a-button-input")).first
             if not await submit.count() or not await submit.is_visible():
                 submit = await self._find_delivery_submit(page)
-            if not await submit.count() or not await submit.is_visible():
-                return self._delivery_error(details, diagnostic_dir, "delivery submit control not found")
-            await submit.click()
-            details["submit_succeeded"] = True
-            confirm = page.locator(location.get("confirm", "#GLUXConfirmClose"))
-            details["confirm_button_found"] = bool(await confirm.count() and await confirm.is_visible())
+            if await submit.count() and await submit.is_visible():
+                await submit.click(timeout=8000)
+                details["submit_succeeded"] = True
+                details["stage"] = "wait confirm"
+            else:
+                # 输入邮编后亚马逊会实时校验，「Bestätigen」可能已经消失，
+                # 此时直接进入确认阶段点击「Fertig」。
+                details["stage"] = "confirm only"
+
+            # 亚马逊是两段式弹窗：填邮编并确认后，才出现「Fertig」按钮，
+            # 点击它才会真正应用新的配送地。
+            confirm = page.locator(location.get("confirm", "#GLUXConfirmClose")).first
+            try:
+                await confirm.wait_for(state="visible", timeout=6000)
+            except Exception:
+                pass
+            if not (await confirm.count()) or not (await confirm.is_visible()):
+                confirm = await self._find_delivery_confirm(page)
+            details["confirm_button_found"] = bool(
+                await confirm.count() and await confirm.is_visible()
+            )
             if details["confirm_button_found"]:
-                await confirm.click()
-            await page.wait_for_timeout(1500)
+                await confirm.click(timeout=8000)
+            elif not details["submit_succeeded"]:
+                await self._close_delivery_dialog(page)
+                return self._delivery_error(details, diagnostic_dir, "delivery submit control not found")
+            await page.wait_for_timeout(2000)
             await page.screenshot(path=str(diagnostic_dir / "delivery_after_submit.png"), full_page=False)
-            await result.wait_for(state="visible", timeout=8000)
-            details["delivery_text_after"] = (await result.inner_text()).strip()
+            try:
+                await result.wait_for(state="visible", timeout=8000)
+                details["delivery_text_after"] = (await result.inner_text()).strip()
+            except Exception:
+                details["delivery_text_after"] = ""
             if postal_code not in details["delivery_text_after"]:
                 return self._delivery_error(details, diagnostic_dir, "requested delivery postal code not observed")
             return None
@@ -443,12 +547,49 @@ class PlaywrightScanner:
         return f"{reason}; {safe}; diagnostics={diagnostic_dir}"
 
     @staticmethod
+    async def _close_delivery_dialog(page) -> None:
+        """关闭配送弹窗。
+
+        弹窗残留会遮挡加购按钮，导致后续 DOM 按钮探测失败。配送设置属于
+        尽力而为，失败时必须把弹窗收干净，让按钮判定照常进行。
+        """
+        for selector in (
+            "button:has-text('Fertig')",
+            "a:has-text('Fertig')",
+            "#GLUXConfirmClose",
+            "button[aria-label='Close']",
+            "[role='dialog'] button:has-text('×')",
+            "[role='dialog'] [aria-label='Close']",
+        ):
+            try:
+                item = page.locator(selector).first
+                if await item.count() and await item.is_visible():
+                    await item.click(timeout=3000)
+                    await page.wait_for_timeout(800)
+                    return
+            except Exception:
+                continue
+        # 兜底：按 Escape 关闭弹窗
+        try:
+            await page.keyboard.press("Escape")
+            await page.wait_for_timeout(400)
+        except Exception:
+            pass
+
+    @staticmethod
     async def _find_delivery_postal_input(page):
+        """在配送弹窗中定位邮编输入框。
+
+        优先按属性关键字（postal/postcode/postleitzahl/plz/zip）匹配；
+        亚马逊新版弹窗的输入框是没有任何属性的裸 input，因此还需要按
+        弹窗结构兜底：取弹窗内第一个可见的文本输入框。
+        """
         scope = page.locator('[role="dialog"]').last
         if not await scope.count():
             scope = page
         candidates = scope.locator("input, textarea, [role='textbox'], [role='combobox']")
-        for index in range(await candidates.count()):
+        total = await candidates.count()
+        for index in range(total):
             item = candidates.nth(index)
             haystack = " ".join(
                 (await item.get_attribute(name) or "")
@@ -456,7 +597,22 @@ class PlaywrightScanner:
             ).lower()
             if any(term in haystack for term in ("postal", "postcode", "postleitzahl", "plz", "zip")):
                 return item
-        return candidates.nth(0) if await candidates.count() == 1 else page.locator("#__delivery_postal_not_found__")
+
+        # 结构性兜底：弹窗内第一个可见的文本输入框。
+        for index in range(total):
+            item = candidates.nth(index)
+            try:
+                input_type = (await item.get_attribute("type") or "text").lower()
+            except Exception:
+                input_type = "text"
+            if input_type in {"hidden", "submit", "button", "checkbox", "radio"}:
+                continue
+            try:
+                if await item.is_visible():
+                    return item
+            except Exception:
+                continue
+        return page.locator("#__delivery_postal_not_found__")
 
     @staticmethod
     async def _find_delivery_submit(page):
@@ -470,6 +626,32 @@ class PlaywrightScanner:
             if any(term in text for term in ("apply", "submit", "weiter", "bestätigen", "confirm", "speichern")):
                 return item
         return page.locator("#__delivery_submit_not_found__")
+
+    @staticmethod
+    async def _find_delivery_confirm(page):
+        """定位「Fertig」确认按钮（亚马逊两段式弹窗的第二步）。
+
+        注意不能用 `text=Fertig`：页面上存在多个匹配，其中第一个可能不可见，
+        点击会一直等到超时。这里逐个候选检查可见性再返回。
+        """
+        for selector in (
+            "button:has-text('Fertig')",
+            "a:has-text('Fertig')",
+            "#GLUXConfirmClose",
+            "button:has-text('Done')",
+            "button:has-text('Appliquer')",
+            "button:has-text('Applica')",
+        ):
+            try:
+                candidates = page.locator(selector)
+                total = await candidates.count()
+                for index in range(total):
+                    item = candidates.nth(index)
+                    if await item.is_visible():
+                        return item
+            except Exception:
+                continue
+        return page.locator("#__delivery_confirm_not_found__")
 
     @staticmethod
     def _with_timestamps(
@@ -507,3 +689,9 @@ class PlaywrightScanner:
 
 def _locale_for(country: str) -> str:
     return {"DE": "de-DE", "IT": "it-IT"}.get(country.upper(), "en-US")
+
+
+def _join_diagnostics(existing: str | None, addition: str) -> str:
+    if not existing:
+        return addition
+    return f"{existing}; {addition}"

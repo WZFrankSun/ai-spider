@@ -40,6 +40,7 @@ class Product:
     enabled: bool = True
     status: ProductScanStatus = ProductScanStatus.NOT_SCANNED
     delivery_validation_required: bool = True
+    postal_code: str = ""
 
 
 @dataclass

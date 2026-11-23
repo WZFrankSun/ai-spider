@@ -64,6 +64,7 @@ class JsonProductCatalogLoader:
                     roi_profile_id=record.roi_profile,
                     enabled=True,
                     delivery_validation_required=record.delivery_validation_required,
+                    postal_code=record.postal_code,
                 )
             )
         return products

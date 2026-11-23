@@ -52,7 +52,7 @@ location:
   trigger: "#nav-global-location-popover-link"
   postal_input: "#GLUXZipUpdateInput"
   submit: "#GLUXZipUpdate .a-button-input"
-  confirm: "#GLUXConfirmClose"
+  confirm: "button:has-text('Fertig')"
   result: "#glow-ingress-block"
   api:
     endpoint: "/portal-migration/hz/glow/address-change?actionSource=glow"

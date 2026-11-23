@@ -13,10 +13,6 @@
 - `app/browser/browser_manager.py`：浏览器和会话生命周期。
 - `app/browser/browser_session.py`：页面、平台和会话变量。
 - `app/platforms/registry.py`：平台 YAML 配置加载。
-- `app/tools/browser/screenshot.py`：现有截图工具和页面就绪等待。
-- `app/core/registry.py`：工具注册。
-- `app/core/executor.py`：工具执行和错误封装。
-- `app/workflows/crawl_list.py`：列表和详情页批量工作流。
 
 演示能力收敛在 `app/monitoring` 模块内（`MonitoringContainer.demo()` 与 `create_demo_app()`），避免改变已有爬虫工具的公共行为。
 

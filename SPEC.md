@@ -42,7 +42,7 @@ MVP 启动不依赖真实商品页面、外网、OpenAI API Key、OCR 模型、M
 后续实现替换或扩展扫描适配器，但保持应用层和领域层接口稳定：
 
 - 读取版本化 JSON 或 CSV 商品清单。
-- 复用现有 `BrowserManager`、`BrowserSession`、平台 YAML 和截图工具。
+- 复用现有 `BrowserManager`、`BrowserSession` 和平台 YAML。
 - 使用固定视口、语言环境、等待条件和 Cookie 弹窗处理。
 - 保存完整页面截图并按 ROI 配置裁剪加入购物车区域。
 - 使用本地 OCR 识别英文、德文和意大利文。

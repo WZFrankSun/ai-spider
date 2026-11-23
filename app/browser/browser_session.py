@@ -7,7 +7,6 @@ from .models import SessionState
 
 if TYPE_CHECKING:
     from app.platforms.base import PlatformProfile
-    from app.core.executor import ToolExecutor
 
 
 @dataclass
@@ -27,8 +26,6 @@ class BrowserSession:
     current_url: str = ""
 
     platform: Optional["PlatformProfile"] = None
-
-    executor: Optional["ToolExecutor"] = None
 
     variables: dict = field(default_factory=dict)
 

@@ -18,7 +18,6 @@ build/
 *.log
 .DS_Store
 playwright/.cache
-examples/auth/
 config/auth/
 .uv-cache/
 /.conda/

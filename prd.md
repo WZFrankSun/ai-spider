@@ -374,10 +374,6 @@ ROI 按“平台 + 页面类型”配置，必要时支持国家维度覆盖。�
 - [app/browser/browser_manager.py](D:/WZ_Project/ai-spider/app/browser/browser_manager.py)：浏览器和会话生命周期。
 - [app/browser/browser_session.py](D:/WZ_Project/ai-spider/app/browser/browser_session.py)：页面、平台和运行变量。
 - [app/platforms/registry.py](D:/WZ_Project/ai-spider/app/platforms/registry.py)：平台 YAML 加载。
-- [app/tools/browser/screenshot.py](D:/WZ_Project/ai-spider/app/tools/browser/screenshot.py)：截图和页面就绪等待。
-- [app/core/registry.py](D:/WZ_Project/ai-spider/app/core/registry.py)：工具注册。
-- [app/core/executor.py](D:/WZ_Project/ai-spider/app/core/executor.py)：工具执行和错误封装。
-- [app/workflows/crawl_list.py](D:/WZ_Project/ai-spider/app/workflows/crawl_list.py)：批量访问和结果导出模式。
 
 新增能力建议以独立模块实现：
 

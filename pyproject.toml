@@ -12,9 +12,6 @@ dependencies = [
     "fastapi",
     "uvicorn",
     "pydantic",
-    "pydantic-settings",
-    "loguru",
-    "openai",
     "pyyaml",
     "sqlalchemy>=2,<3",
     "alembic>=1,<2",
@@ -23,6 +20,9 @@ dependencies = [
     "pillow>=10,<13",
     "aiosqlite>=0.20,<1",
 ]
+
+[dependency-groups]
+dev = ["httpx2"]
 
 [tool.setuptools.packages.find]
 where = ["."]

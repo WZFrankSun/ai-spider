@@ -2,6 +2,8 @@
 
 每次任务记一条，写明日期、目的、涉及文件、具体变化和测试结果。
 
+- 2026-11-23｜退役旧 Agent 框架和纯视觉方案｜涉及 `app/core/`、`app/tools/`、`app/agents/`、`app/workflows/`、`app/bootstrap.py`、`app/config.py`、`app/platforms/social/`、`examples/`、`.cursor/skills/amazon-screenshot/`（均删除），以及 `app/browser/browser_session.py`、`app/platforms/registry.py`、`pyproject.toml`、`uv.lock`、`.env`、`.env.example`、`.gitignore`、`prd.md`、`SPEC.md`、`TASK.md`、`Tasks.md`、`docs/real-scan-runbook.md`｜加购入口判定统一为 DOM 按钮可用性检查加 Tesseract ROI OCR，弃用多模态 LLM 看图方案；删除工具注册执行框架、LLM 选择器解析、examples 演示脚本和对应 Skill，清理 openai、loguru、pydantic-settings 依赖及 LLM 环境变量；`httpx2` 原本由 openai 间接引入，删除后改由 dev 依赖组显式声明，避免 FastAPI TestClient 失效｜135 个测试通过；Amazon Live 验收：`DE-amazon-001` 为 `healthy`（OCR 命中「In den Einkaufswagen」），`DE-amazon-negative-001` 为 `inventory_risk`（OCR 命中「Derzeit nicht verfügbar」）且告警 `alert-DE-amazon-negative-001` 保持单条累计，定时扫描全程关闭。
+
 - 2026-11-23｜清理 MVP 死代码和空目录｜涉及 `app/mvp/`（删除）、`app/monitoring/api/routes.py`、`app/monitoring/api/__init__.py`、`app/monitoring/templates/`、`app/tools/extract/dom_snapshot.py`（删除）、`app/config`、`app/tools/network`、`app/workflow`（空目录删除）、`tests/`、`pyproject.toml`、`TDD.md`、`TASK.md`、`Tasks.md`、`docs/ARCHITECTURE.md`｜删除独立 `app/mvp` 模块，演示能力收敛到 monitoring 内的 `create_demo_app()`，`legacy_auto_recover` 更名 `demo_auto_recover` 并在模块内实现，页面模板移入 `app/monitoring/templates/`；135 个测试通过；Amazon Live 验收：`DE-amazon-001` 为 `healthy`（OCR 命中"In den Einkaufswagen"），`DE-amazon-negative-001` 为 `inventory_risk`（OCR 命中"Derzeit nicht verfügbar"）且告警 `alert-DE-amazon-negative-001` 保持单条累计，定时扫描全程关闭。
 
 - 2026-11-23｜执行四个 Amazon 站点 Live 验收｜涉及商品目录、目录校验、ROI 和加购词库｜加入英国站和跨站候选；德国、意大利、法国、英国各验证 3 个健康和 3 个无加购案例，技术失败单列；142 个测试通过。

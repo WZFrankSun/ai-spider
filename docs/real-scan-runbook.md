@@ -11,7 +11,7 @@
   "screenshots": [
     {
       "product_id": "DE-amazon-SKU-001",
-      "path": "examples/output/screenshots/amazon/DE-amazon-SKU-001.png",
+      "path": "output/screenshots/amazon/DE-amazon-SKU-001.png",
       "captured_at": "2026-11-20T00:00:00Z",
       "country": "DE",
       "platform": "amazon",

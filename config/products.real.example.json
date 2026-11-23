@@ -1,0 +1,26 @@
+{
+  "products": [
+    {
+      "id": "DE-amazon-SKU-001",
+      "country": "DE",
+      "platform": "amazon",
+      "sku": "SKU-001",
+      "name": "Bathroom tap",
+      "url": "https://example.test/de/product-001",
+      "page_type": "product_detail",
+      "roi_profile": "amazon_product_detail_de",
+      "enabled": true
+    },
+    {
+      "id": "IT-amazon-SKU-001",
+      "country": "IT",
+      "platform": "amazon",
+      "sku": "SKU-001",
+      "name": "Kitchen appliance",
+      "url": "https://example.test/it/product-001",
+      "page_type": "product_detail",
+      "roi_profile": "amazon_product_detail_it",
+      "enabled": true
+    }
+  ]
+}

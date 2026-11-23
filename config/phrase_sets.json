@@ -1,0 +1,118 @@
+{
+  "phrase_sets": [
+    {
+      "country": "DE",
+      "platform": "amazon",
+      "page_type": "product_detail",
+      "phrases": [
+        "In den Einkaufswagen",
+        "In den Warenkorb",
+        "Add to basket",
+        "Add to cart",
+        "Zum Einkaufswagen hinzufügen",
+        "Zum Warenkorb hinzufügen",
+        "In den Einkaufswagen legen",
+        "In den Warenkorb legen",
+        "Add to your cart",
+        "Add to your basket"
+      ],
+      "unavailable_phrases": [
+        "Derzeit nicht verfügbar",
+        "Momentan nicht verfügbar",
+        "Vorübergehend nicht verfügbar",
+        "Nicht auf Lager",
+        "Derzeit nicht auf Lager",
+        "Zurzeit nicht auf Lager",
+        "Ausverkauft",
+        "Derzeit nicht bestellbar",
+        "Currently unavailable",
+        "Temporarily unavailable",
+        "Temporarily out of stock",
+        "Currently out of stock",
+        "Out of stock",
+        "Sold out",
+        "Currently not available",
+        "Not available for purchase"
+      ]
+    },
+    {
+      "country": "IT",
+      "platform": "amazon",
+      "page_type": "product_detail",
+      "phrases": [
+        "Aggiungi al carrello",
+        "Add to basket",
+        "Add to cart",
+        "Aggiungi al tuo carrello",
+        "Aggiungere al carrello",
+        "Add to your cart",
+        "Add to your basket"
+      ],
+      "unavailable_phrases": [
+        "Attualmente non disponibile",
+        "Al momento non disponibile",
+        "Temporaneamente non disponibile",
+        "Non disponibile al momento",
+        "Esaurito",
+        "Attualmente non acquistabile",
+        "Currently unavailable",
+        "Temporarily unavailable",
+        "Temporarily out of stock",
+        "Currently out of stock",
+        "Out of stock",
+        "Sold out",
+        "Currently not available",
+        "Not available for purchase"
+      ]
+    },
+    {
+      "country": "FR",
+      "platform": "amazon",
+      "page_type": "product_detail",
+      "phrases": [
+        "Ajouter au panier",
+        "Ajouter au chariot",
+        "Add to basket",
+        "Add to cart",
+        "Ajouter à mon panier",
+        "Ajouter dans le panier",
+        "Add to your cart",
+        "Add to your basket"
+      ],
+      "unavailable_phrases": [
+        "Actuellement indisponible",
+        "Temporairement indisponible",
+        "Article indisponible",
+        "En rupture de stock",
+        "Rupture de stock temporaire",
+        "Actuellement non disponible",
+        "Currently unavailable",
+        "Temporarily unavailable",
+        "Temporarily out of stock",
+        "Currently out of stock",
+        "Out of stock",
+        "Sold out",
+        "Currently not available",
+        "Not available for purchase"
+      ]
+    },
+    {
+      "country": "GB",
+      "platform": "amazon",
+      "page_type": "product_detail",
+      "phrases": [
+        "Add to basket",
+        "Add to cart",
+        "Add to your basket",
+        "Add to your cart"
+      ],
+      "unavailable_phrases": [
+        "Currently unavailable",
+        "Temporarily unavailable",
+        "Out of stock",
+        "Sold out",
+        "Not available for purchase"
+      ]
+    }
+  ]
+}

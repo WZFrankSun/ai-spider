@@ -1,0 +1,56 @@
+name: shopify
+category: saas
+
+browser:
+  viewport:
+    width: 1280
+    height: 900
+  locale: en-US
+
+auth:
+  required: false
+
+selectors:
+  product_card: ".product-card, .grid__item .card"
+  product_title: ".product-card__title, .card__heading"
+  product_price: ".price, .product-card__price"
+  product_link: "a.product-card__link, .card__heading a"
+  next_page: ".pagination__next, a[rel='next']"
+
+extraction:
+  default_link_pattern: product
+  default_page_type: product_detail
+  default_list_page_type: collection
+  link_patterns:
+    product:
+      match_regex: 'products/([a-z0-9-]+)/?'
+      id_field: handle
+      id_group: 1
+  page_types:
+    collection:
+      url_patterns:
+        - "/collections/"
+      item_selector: ".product-card, .grid__item, .card-wrapper"
+      fields:
+        title:
+          selector: ".product-card__title, .card__heading, .card-information__text"
+        price:
+          selector: ".price, .product-card__price, .price-item"
+        url:
+          selector: "a[href*='/products/']"
+          attr: href
+    product_detail:
+      fields:
+        title:
+          selector: "h1.product__title, .product-single__title, h1"
+        price:
+          selector: ".price__regular, .product__price, .price-item--regular"
+        handle:
+          source: url
+          regex: '/products/([a-z0-9-]+)/?'
+          group: 1
+
+crawl:
+  rate_limit_ms: 1000
+  scroll_strategy: paginate
+  max_pages: 20

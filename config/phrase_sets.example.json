@@ -1,0 +1,27 @@
+{
+  "phrase_sets": [
+    {
+      "country": "DE",
+      "platform": "amazon",
+      "page_type": "product_detail",
+      "phrases": [
+        "Add to cart",
+        "Add to basket",
+        "In den Warenkorb",
+        "In den Einkaufswagen",
+        "Zum Warenkorb"
+      ]
+    },
+    {
+      "country": "IT",
+      "platform": "amazon",
+      "page_type": "product_detail",
+      "phrases": [
+        "Add to cart",
+        "Add to basket",
+        "Aggiungi al carrello",
+        "Aggiungi al cestino"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+﻿__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.env.*
+!.env.example
+.pytest_cache/
+.venv
+venv/
+ENV/
+env/
+.idea/
+.vscode/
+*.egg-info/
+dist/
+build/
+*.log
+.DS_Store
+playwright/.cache
+examples/auth/
+config/auth/
+.uv-cache/
+/.conda/
+
+# 本地运行产物和安装文件
+/output/
+/tools/installers/
+/config/screenshots.manifest.json
+
+# 本地助手工作记录
+/.learnings/
+/.superpowers/sdd/

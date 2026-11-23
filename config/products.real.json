@@ -1,0 +1,148 @@
+{
+  "products": [
+    {
+      "id": "DE-amazon-001",
+      "country": "DE",
+      "platform": "amazon",
+      "sku": "TEMP-ASIN-B0CV7PGS46",
+      "name": "Razer BlackShark V2 HyperSpeed White",
+      "url": "https://www.amazon.de/dp/B0CV7PGS46",
+      "page_type": "product_detail",
+      "roi_profile": "amazon_product_detail_de_live",
+      "enabled": true
+    },
+    {
+      "id": "DE-amazon-negative-001",
+      "country": "DE",
+      "platform": "amazon",
+      "sku": "TEMP-ASIN-B0CQMFJ888",
+      "name": "MSI GeForce RTX 4080 SUPER GAMING",
+      "url": "https://www.amazon.de/MSI-GeForce-4080-SUPER-GAMING/dp/B0CQMFJ888",
+      "page_type": "product_detail",
+      "roi_profile": "amazon_product_detail_de_buy_box",
+      "delivery_validation_required": false,
+      "enabled": true
+    },
+    {
+      "id": "DE-amazon-B07Q3DYMRD",
+      "country": "DE",
+      "platform": "amazon",
+      "sku": "TEMP-ASIN-B07Q3DYMRD",
+      "name": "B07Q3DYMRD",
+      "url": "https://www.amazon.de/dp/B07Q3DYMRD",
+      "page_type": "product_detail",
+      "roi_profile": "amazon_product_detail_de_buy_box",
+      "enabled": true
+    },
+    {
+      "id": "IT-amazon-B07Q3DYMRD",
+      "country": "IT",
+      "platform": "amazon",
+      "sku": "TEMP-ASIN-B07Q3DYMRD",
+      "name": "B07Q3DYMRD",
+      "url": "https://www.amazon.it/dp/B07Q3DYMRD",
+      "page_type": "product_detail",
+      "roi_profile": "amazon_product_detail_it_buy_box",
+      "enabled": true
+    },
+    {
+      "id": "DE-amazon-B0CVVHN1GQ",
+      "country": "DE",
+      "platform": "amazon",
+      "sku": "TEMP-ASIN-B0CVVHN1GQ",
+      "name": "B0CVVHN1GQ",
+      "url": "https://www.amazon.de/dp/B0CVVHN1GQ?th=1",
+      "page_type": "product_detail",
+      "roi_profile": "amazon_product_detail_de_buy_box",
+      "enabled": true
+    },
+    {
+      "id": "DE-amazon-B0CSF7XYJY",
+      "country": "DE",
+      "platform": "amazon",
+      "sku": "TEMP-ASIN-B0CSF7XYJY",
+      "name": "B0CSF7XYJY",
+      "url": "https://www.amazon.de/dp/B0CSF7XYJY?th=1",
+      "page_type": "product_detail",
+      "roi_profile": "amazon_product_detail_de_buy_box",
+      "enabled": true
+    },
+    {
+      "id": "DE-amazon-B0CFLQ256C",
+      "country": "DE",
+      "platform": "amazon",
+      "sku": "TEMP-ASIN-B0CFLQ256C",
+      "name": "B0CFLQ256C",
+      "url": "https://www.amazon.de/dp/B0CFLQ256C?th=1",
+      "page_type": "product_detail",
+      "roi_profile": "amazon_product_detail_de_buy_box",
+      "enabled": true
+    },
+    {
+      "id": "DE-amazon-B0CY5FS7V9",
+      "country": "DE",
+      "platform": "amazon",
+      "sku": "TEMP-ASIN-B0CY5FS7V9",
+      "name": "B0CY5FS7V9",
+      "url": "https://www.amazon.de/dp/B0CY5FS7V9",
+      "page_type": "product_detail",
+      "roi_profile": "amazon_product_detail_de_buy_box",
+      "enabled": true
+    },
+    {
+      "id": "FR-amazon-B0CLLP37J7",
+      "country": "FR",
+      "platform": "amazon",
+      "sku": "TEMP-ASIN-B0CLLP37J7",
+      "name": "B0CLLP37J7",
+      "url": "https://www.amazon.fr/dp/B0CLLP37J7",
+      "page_type": "product_detail",
+      "roi_profile": "amazon_product_detail_fr_buy_box",
+      "enabled": true
+    },
+    {
+      "id": "DE-amazon-B0CPCX2KWT",
+      "country": "DE",
+      "platform": "amazon",
+      "sku": "TEMP-ASIN-B0CPCX2KWT",
+      "name": "B0CPCX2KWT",
+      "url": "https://www.amazon.de/dp/B0CPCX2KWT",
+      "page_type": "product_detail",
+      "roi_profile": "amazon_product_detail_de_buy_box",
+      "enabled": true
+    },
+    {
+      "id": "DE-amazon-B0D9CVK4TC",
+      "country": "DE",
+      "platform": "amazon",
+      "sku": "TEMP-ASIN-B0D9CVK4TC",
+      "name": "B0D9CVK4TC",
+      "url": "https://www.amazon.de/dp/B0D9CVK4TC?th=1",
+      "page_type": "product_detail",
+      "roi_profile": "amazon_product_detail_de_buy_box",
+      "enabled": true
+    },
+    {
+      "id": "DE-amazon-002",
+      "country": "DE",
+      "platform": "amazon",
+      "sku": "TEMP-ASIN-B0DTYXQWXM",
+      "name": "Razer Blade 16 (2025) RTX 5060",
+      "url": "https://www.amazon.de/dp/B0DTYXQWXM",
+      "page_type": "product_detail",
+      "roi_profile": "amazon_product_detail_de_buy_box",
+      "enabled": true
+    },
+    {
+      "id": "DE-amazon-003",
+      "country": "DE",
+      "platform": "amazon",
+      "sku": "TEMP-ASIN-B0BHF3M4TK",
+      "name": "MSI GeForce RTX 4080 SUPRIM X",
+      "url": "https://www.amazon.de/dp/B0BHF3M4TK",
+      "page_type": "product_detail",
+      "roi_profile": "amazon_product_detail_de_buy_box",
+      "enabled": true
+    }
+  ]
+}

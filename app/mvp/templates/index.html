@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>商品加购入口监控 MVP</title>
+  <style>
+    :root { font-family: Inter, ui-sans-serif, system-ui, sans-serif; color: #162638; background: #f5f7f4; --navy:#0e1b2a; --green:#1c9a78; --amber:#d97732; --red:#c94b4b; --line:#dce4ea; }
+    * { box-sizing: border-box; } body { margin: 0; background: radial-gradient(circle at 85% 0%, #dcefe8 0, transparent 34%), #f5f7f4; }
+    header { background: var(--navy); color: white; padding: 32px max(24px, calc((100vw - 1240px)/2)); border-bottom: 4px solid var(--green); }
+    header strong { font: 700 30px/1.1 Georgia, serif; letter-spacing: -.03em; } main { max-width: 1240px; margin: 28px auto; padding: 0 20px 56px; }
+    .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+    .card, section { background: rgba(255,255,255,.88); border: 1px solid var(--line); border-radius: 16px; padding: 18px; box-shadow: 0 12px 30px #0e1b2a0d; }
+    .metric { font-size: 28px; font-weight: 700; margin-top: 8px; }
+    .muted { color: #65727e; font-size: 13px; }
+    section { margin-top: 18px; overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; min-width: 860px; }
+    th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid #e7ebee; font-size: 14px; }
+    th { color: #65727e; font-weight: 600; }
+    .pill { border-radius: 999px; padding: 4px 9px; font-size: 12px; font-weight: 600; display: inline-block; }
+    .healthy, .resolved { background: #dff5e8; color: #18794e; }
+    .risk, .open, .reopened { background: #ffe4e1; color: #b42318; }
+    .pending, .scanning { background: #fff0c2; color: #8a5b00; }
+    .technical_failure { background: #e5e7eb; color: #374151; }
+    button, select { border: 1px solid #cbd5df; border-radius: 7px; padding: 7px 10px; background: white; cursor: pointer; }
+    button.primary { background: #2457d6; color: white; border-color: #2457d6; }
+    button:disabled { opacity: .5; cursor: wait; }
+    button:focus-visible, select:focus-visible { outline: 3px solid #7aa2ff; outline-offset: 2px; }
+    .toast-region { position: fixed; right: 20px; bottom: 20px; z-index: 10; width: min(360px, calc(100vw - 40px)); display: grid; gap: 8px; }
+    .toast { background: #17202a; color: white; border-left: 4px solid #7aa2ff; border-radius: 8px; padding: 12px 14px; box-shadow: 0 8px 24px #17202a33; display: flex; gap: 10px; align-items: flex-start; }
+    .toast.success { border-left-color: #3cc77a; }
+    .toast.warning { border-left-color: #f5b942; }
+    .toast.error { border-left-color: #ff746c; }
+    .toast button { margin-left: auto; padding: 0 4px; border: 0; background: transparent; color: inherit; }
+    .operation-busy { opacity: .72; }
+    @media (max-width: 760px) { .toast-region { left: 12px; right: 12px; bottom: 12px; width: auto; } main { padding-bottom: 120px; } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; } }
+    .demo-result { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .monitoring-status { display:grid; grid-template-columns: 1.2fr 2fr 1fr; gap:16px; align-items:center; margin-bottom:18px; }
+    .status-value { font-size:22px; font-weight:750; margin-top:6px; }
+    .status-ok { color:var(--green); } .status-bad { color:var(--red); }
+    .pipeline { display:flex; gap:8px; align-items:center; color:#536779; font-size:12px; } .pipeline span { border:1px solid var(--line); padding:8px 10px; background:#fff; border-radius:9px; } .pipeline b { color:var(--green); }
+    .filters { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:14px 0; } .filters select { min-width:130px; }
+    .evidence { max-width:280px; word-break:break-word; font-size:12px; line-height:1.5; } .evidence a { color:#176c9b; }
+    @media (max-width: 760px) { .summary { grid-template-columns: repeat(2, 1fr); } header { padding: 20px; } }
+  </style>
+</head>
+<body>
+  <header><strong>商品加购入口库存风险监控</strong><div class="muted" style="color:#b9cbd5;margin-top:8px">跨境运营监控台 · 关注各市场的加购可用性</div></header>
+  <main>
+    <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+    <section id="monitoring-status" class="monitoring-status"><div><div class="muted">运行模式</div><div id="mode-value" class="status-value">读取中</div></div><div><div class="muted">扫描航线</div><div class="pipeline"><span>截图输入</span><b>›</b><span>ROI</span><b>›</b><span>OCR</span><b>›</b><span>状态判断</span><b>›</b><span>告警</span></div></div><div><div class="muted">前置条件</div><div id="preflight-value" class="status-value">读取中</div></div></section>
+    <div id="summary" class="summary"></div>
+    <section>
+      <h2>商品扫描</h2>
+      <p class="muted">每次扫描都保留时间、耗时、OCR 匹配词和截图证据。技术故障不会创建库存风险告警，也不会自动关闭已有告警。</p>
+      <div class="filters"><label class="muted">筛选国家</label><select id="country-filter"><option value="all">全部</option><option value="DE">德国</option><option value="IT">意大利</option><option value="FR">法国</option></select><label class="muted">筛选状态</label><select id="status-filter"><option value="all">全部</option><option value="healthy">健康</option><option value="inventory_risk">库存风险</option><option value="technical_failure">技术故障</option></select></div>
+      <table><thead><tr><th>国家</th><th>SKU</th><th>商品</th><th>平台</th><th>状态</th><th>演示结果</th><th>最近扫描</th><th>耗时</th><th>操作</th><th>OCR 证据 / 截图证据</th></tr></thead><tbody id="products"></tbody></table>
+    </section>
+    <section>
+      <h2>告警事件</h2>
+      <table><thead><tr><th>类型</th><th>商品</th><th>状态</th><th>失败次数</th><th>操作</th></tr></thead><tbody id="alerts"></tbody></table>
+    </section>
+    <section id="sku-history" hidden>
+      <h2 id="sku-history-title">扫描历史</h2>
+      <button id="close-history" type="button">收起历史</button>
+      <p class="muted">每次扫描独立保留截图证据，历史记录不会被下一次扫描覆盖。</p>
+      <table><thead><tr><th>扫描时间</th><th>商品</th><th>状态</th><th>OCR</th><th>匹配词</th><th>错误</th><th>截图</th></tr></thead><tbody id="scan-history"></tbody></table>
+    </section>
+  </main>
+  <script>
+    const labels = { not_scanned: '尚未扫描', scanning: '扫描中', healthy: '健康', inventory_risk: '疑似库存异常', technical_failure: '技术故障', open: '待处理', reopened: '重新打开', pending_verification: '待验证', resolved: '已恢复' };
+    const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+    const statusClass = value => value === 'healthy' || value === 'resolved' ? 'healthy' : value || '';
+    const activeOperations = new Set();
+    const scanStarts = new Map();
+    const OPERATION_TIMEOUT_MS = 10000;
+    const SCAN_TIMEOUT_MS = 300000;
+    let scanRefreshTimer;
+    const NETWORK_ERROR_MESSAGE = '网络请求失败，请重试';
+    function showToast(message, kind = 'info', timeoutMs = 4500) {
+      const region = document.querySelector('#toast-region');
+      if (!region) return;
+      const toast = document.createElement('div');
+      toast.className = `toast ${kind}`;
+      toast.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+      toast.innerHTML = `<span>${esc(message)}</span><button type="button" aria-label="关闭消息">×</button>`;
+      toast.querySelector('button').addEventListener('click', () => toast.remove());
+      region.appendChild(toast);
+      window.setTimeout(() => toast.remove(), timeoutMs);
+    }
+    function errorMessage(error) {
+      if (error?.name === 'AbortError') return '请求超过等待时间，请查看最新扫描状态';
+      if (error?.name === 'TypeError' || error?.message === 'Failed to fetch') return NETWORK_ERROR_MESSAGE;
+      return error?.message || '操作失败，请重试';
+    }
+    async function json(url, options = {}, timeoutMs = OPERATION_TIMEOUT_MS) {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const response = await fetch(url, { ...options, signal: controller.signal });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const error = new Error(payload.detail || response.statusText || '请求失败');
+          error.status = response.status;
+          throw error;
+        }
+        return payload;
+      } finally {
+        window.clearTimeout(timeout);
+      }
+    }
+    function setBusy(button, busy, busyLabel, idleLabel) {
+      if (!button) return;
+      button.disabled = busy;
+      button.setAttribute('aria-busy', String(busy));
+      button.setAttribute('aria-disabled', String(busy));
+      button.classList.toggle('operation-busy', busy);
+      if (busy) button.dataset.idleLabel = button.textContent;
+      button.textContent = busy ? busyLabel : (idleLabel || button.dataset.idleLabel || button.textContent);
+    }
+    function beginOperation(key, button, busyLabel) {
+      if (activeOperations.has(key)) return false;
+      activeOperations.add(key);
+      setBusy(button, true, busyLabel);
+      return true;
+    }
+    function endOperation(key, button, idleLabel) {
+      activeOperations.delete(key);
+      setBusy(button, false, '', idleLabel);
+    }
+    let cachedProducts = [];
+    let cachedScans = [];
+    let historyProductId = null;
+    async function render() {
+      const [products, alerts, scans, runtime] = await Promise.all([json('/api/products'), json('/api/alerts'), json('/api/scans'), json('/api/monitoring/status')]);
+      cachedProducts = products;
+      cachedScans = scans;
+      document.querySelector('#mode-value').textContent = `${runtime.mode === 'demo' ? 'Demo 演示' : 'Real 真实输入'} · ${runtime.input_mode}`;
+      document.querySelector('#mode-value').className = `status-value ${runtime.mode === 'demo' ? 'status-ok' : ''}`;
+      const ready = runtime.preflight?.ready;
+      document.querySelector('#preflight-value').textContent = ready ? '可运行' : `${runtime.preflight.missing?.length || 0} 项待准备`;
+      document.querySelector('#preflight-value').className = `status-value ${ready ? 'status-ok' : 'status-bad'}`;
+      const latestScans = new Map();
+      for (const scan of scans) {
+        const previous = latestScans.get(scan.product_id);
+        if (!previous || Date.parse(scan.started_at) > Date.parse(previous.started_at)) {
+          latestScans.set(scan.product_id, scan);
+        }
+      }
+      document.querySelector('#summary').innerHTML = [['监控商品', products.length], ['德国', products.filter(p => p.country === 'DE').length], ['意大利', products.filter(p => p.country === 'IT').length], ['法国', products.filter(p => p.country === 'FR').length], ['当前告警', alerts.filter(a => a.status !== 'resolved').length]].map(([label, value]) => `<div class="card"><div class="muted">${label}</div><div class="metric">${value}</div></div>`).join('');
+      const country = document.querySelector('#country-filter')?.value || 'all';
+      const filterStatus = document.querySelector('#status-filter')?.value || 'all';
+      document.querySelector('#products').innerHTML = products.filter(p => (country === 'all' || p.country === country) && (filterStatus === 'all' || p.status === filterStatus)).map(p => {
+        const scan = latestScans.get(p.id) || {};
+        const scanning = p.status === 'scanning' || scanStarts.has(p.id);
+        const status = scanning ? 'scanning' : p.status;
+        const reason = scan.error_message || '';
+        const time = formatScanTime(scan, p.id);
+        return `<tr data-product-id="${esc(p.id)}"><td>${esc(p.country)}</td><td>${esc(p.sku)}</td><td>${esc(p.name || p.id)}</td><td>${esc(p.platform)}</td><td><span id="status-${esc(p.id)}" class="pill ${statusClass(status)}">${labels[status] || esc(status)}</span>${p.status === 'technical_failure' ? `<div class="muted">错误原因：${esc(reason || '未提供')}</div>` : ''}</td><td><div class="demo-result"><select id="result-${esc(p.id)}"><option value="healthy">健康</option><option value="inventory_risk">库存异常</option><option value="technical_failure">技术故障</option></select><button data-operation="demo-result:${esc(p.id)}" onclick="setResult('${esc(p.id)}', this)">设置</button></div></td><td data-last-scan="${esc(time.time)}">${esc(time.label)}</td><td data-scan-duration="${esc(time.duration)}">${esc(time.duration)}</td><td class="scan-evidence evidence" data-evidence="${esc(p.id)}">${scan.matched_phrase ? `<div>OCR：${esc(scan.matched_phrase)}</div>` : ''}${scan.error_code ? `<div class="muted">${scan.status === "healthy" ? "诊断" : "错误"}：${esc(scan.error_code)}</div>` : ''}${scan.screenshots?.full_url ? `<div><a href="${esc(scan.screenshots.full_url)}" target="_blank" rel="noreferrer">查看页面截图</a></div>` : ''}${scan.screenshots?.roi_url ? `<div><a href="${esc(scan.screenshots.roi_url)}" target="_blank" rel="noreferrer">查看 ROI</a></div>` : ''}${!scan.matched_phrase && !scan.error_code && !scan.screenshots?.full_url && !scan.screenshots?.roi_url ? '<span class="muted">本次尚无证据</span>' : ''}</td><td><button class="primary" data-operation="scan:${esc(p.id)}" onclick="scan('${esc(p.id)}', this)" ${scanning ? 'disabled' : ''}>立即扫描</button> <button type="button" data-history-product="${esc(p.id)}">查看历史</button></td></tr>`;
+      }).join('');
+      document.querySelector('#alerts').innerHTML = alerts.length ? alerts.map(a => `<tr><td>${esc(a.type)}</td><td>${esc(a.product_id)}</td><td><span class="pill ${statusClass(a.status)}">${labels[a.status] || esc(a.status)}</span></td><td>${a.failure_count}</td><td>${a.status === 'resolved' ? '已完成' : `<button data-operation="verify:${esc(a.id)}" onclick="verify('${esc(a.id)}', this)">标记已处理并验证</button>`}</td></tr>`).join('') : '<tr><td colspan="5" class="muted">暂无告警</td></tr>';
+      renderHistory();
+      for (const button of document.querySelectorAll('[data-operation]')) {
+        if (activeOperations.has(button.dataset.operation)) button.disabled = true;
+      }
+      window.clearTimeout(scanRefreshTimer);
+      if (products.some(product => product.status === 'scanning')) {
+        scanRefreshTimer = window.setTimeout(async () => {
+          try {
+            await render();
+          } catch (error) {
+            showToast(errorMessage(error), 'error');
+          }
+        }, 3000);
+      }
+    }
+    function renderHistory() {
+      const section = document.querySelector('#sku-history');
+      const product = cachedProducts.find(item => item.id === historyProductId);
+      section.hidden = !product;
+      if (!product) return;
+      document.querySelector('#sku-history-title').textContent = `扫描历史 · ${product.sku}`;
+      const scans = cachedScans
+        .filter(scan => scan.product_id === product.id)
+        .sort((a, b) => Date.parse(b.started_at) - Date.parse(a.started_at));
+      document.querySelector('#scan-history').innerHTML = scans.length ? scans.map(scan => `<tr><td>${esc(new Date(scan.started_at).toLocaleString())}</td><td>${esc(product.sku)}</td><td><span class="pill ${statusClass(scan.status)}">${labels[scan.status] || esc(scan.status)}</span></td><td>${esc(scan.ocr_text || '—')}</td><td>${esc(scan.matched_phrase || '—')}</td><td>${esc(scan.error_code || '—')}</td><td>${scan.screenshots?.full_url ? `<a href="${esc(scan.screenshots.full_url)}" target="_blank" rel="noreferrer">Full</a>` : 'No screenshot'}${scan.screenshots?.roi_url ? ` · <a href="${esc(scan.screenshots.roi_url)}" target="_blank" rel="noreferrer">ROI</a>` : ''}</td></tr>`).join('') : '<tr><td colspan="7" class="muted">暂无扫描历史</td></tr>';
+    }
+    document.querySelector('#products').addEventListener('click', event => {
+      const button = event.target.closest('[data-history-product]');
+      if (!button) return;
+      historyProductId = button.dataset.historyProduct;
+      renderHistory();
+      document.querySelector('#sku-history').scrollIntoView();
+    });
+    document.querySelector('#close-history').addEventListener('click', () => {
+      historyProductId = null;
+      renderHistory();
+    });
+    function formatScanTime(scan, productId) {
+      const localStart = scanStarts.get(productId);
+      if (localStart) {
+        const started = new Date(localStart);
+        return { time: localStart, label: started.toLocaleString(), duration: '进行中' };
+      }
+      if (!scan?.started_at) return { time: '', label: '未扫描', duration: '—' };
+      const started = new Date(scan.started_at);
+      const finished = scan.finished_at ? new Date(scan.finished_at) : null;
+      const duration = finished ? `${Math.max(0, (finished - started) / 1000).toFixed(1)}s` : '进行中';
+      return { time: scan.finished_at || scan.started_at, label: (finished || started).toLocaleString(), duration };
+    }
+    async function setResult(id, button) {
+      const key = `demo-result:${id}`;
+      if (!beginOperation(key, button, '设置中…')) return;
+      try {
+        const result = document.querySelector(`#result-${id}`).value;
+        await json(`/api/products/${id}/demo-result`, { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify({result}) });
+        showToast('已设置下一次演示结果', 'success');
+      } catch (error) {
+        showToast(errorMessage(error), 'error');
+      } finally {
+        endOperation(key, button, '设置');
+      }
+    }
+    async function refreshAfterAction() {
+      try {
+        await render();
+      } catch (error) {
+        showToast('扫描已完成，但页面刷新失败，请手动刷新', 'warning');
+      }
+    }
+    function setProductScanning(id, startedAt) {
+      const status = document.querySelector(`#status-${id}`);
+      if (status) { status.textContent = labels.scanning; status.className = 'pill scanning'; }
+      const lastScan = document.querySelector(`[data-product-id="${id}"] [data-last-scan]`);
+      const duration = document.querySelector(`[data-product-id="${id}"] [data-scan-duration]`);
+      if (lastScan) { lastScan.textContent = new Date(startedAt).toLocaleString(); lastScan.dataset.lastScan = startedAt; }
+      if (duration) { duration.textContent = '进行中'; duration.dataset.scanDuration = '进行中'; }
+    }
+    async function scan(id, button) {
+      const key = `scan:${id}`;
+      if (!beginOperation(key, button, '扫描中…')) return;
+      const startedAt = new Date().toISOString();
+      scanStarts.set(id, startedAt);
+      setProductScanning(id, startedAt);
+      showToast(`已开始扫描：${id}`, 'info', 2500);
+      let retry = false;
+      try {
+        const result = await json(`/api/products/${id}/scan`, { method: 'POST' }, SCAN_TIMEOUT_MS);
+        scanStarts.delete(id);
+        const message = result.status === 'inventory_risk' ? '发现未识别到加购入口，已创建告警' : result.status === 'technical_failure' ? '扫描失败：技术故障' : '扫描完成，商品状态正常';
+        showToast(message, result.status === 'inventory_risk' ? 'warning' : result.status === 'technical_failure' ? 'error' : 'success');
+      } catch (error) {
+        retry = true;
+        scanStarts.delete(id);
+        showToast(error.status === 409 ? '该商品正在扫描，请稍候' : errorMessage(error), 'error');
+      } finally {
+        endOperation(key, button, retry ? '重试扫描' : '立即扫描');
+        await refreshAfterAction();
+      }
+    }
+    async function verify(id, button) {
+      const key = `verify:${id}`;
+      if (!beginOperation(key, button, '验证中…')) return;
+      let retry = false;
+      try {
+        await json(`/api/alerts/${id}/verify`, { method: 'POST' }, SCAN_TIMEOUT_MS);
+        showToast('复查完成，告警状态已更新', 'success');
+      } catch (error) {
+        retry = true;
+        showToast(error.status === 409 ? '该告警正在处理中，请稍候' : errorMessage(error), 'error');
+      } finally {
+        endOperation(key, button, retry ? '重新验证' : '标记已处理并验证');
+        await refreshAfterAction();
+      }
+    }
+    document.querySelector('#country-filter').addEventListener('change', render);
+    document.querySelector('#status-filter').addEventListener('change', render);
+    render().catch(error => { document.querySelector('main').insertAdjacentHTML('afterbegin', `<div class="card">加载失败：${esc(error.message)}</div>`); });
+  </script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+{
+  "screenshots": [
+    {
+      "product_id": "DE-amazon-SKU-001",
+      "path": "examples/output/screenshots/amazon/DE-amazon-SKU-001.png",
+      "captured_at": "2026-11-20T00:00:00Z",
+      "country": "DE",
+      "platform": "amazon",
+      "sku": "SKU-001"
+    },
+    {
+      "product_id": "IT-amazon-SKU-001",
+      "path": "examples/output/screenshots/amazon/IT-amazon-SKU-001.png",
+      "captured_at": "2026-11-20T00:00:00Z",
+      "country": "IT",
+      "platform": "amazon",
+      "sku": "SKU-001"
+    }
+  ]
+}

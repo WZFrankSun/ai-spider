@@ -1,0 +1,106 @@
+name: amazon
+category: ecommerce
+
+browser:
+  viewport:
+    width: 1440
+    height: 900
+  locale: de-DE
+
+delivery:
+  country: DE
+  postal_code: "10115"
+
+auth:
+  required: false
+  home_url: https://www.amazon.com/
+  login_url: https://www.amazon.com/ap/signin
+  logged_in_selectors:
+    - "#nav-link-accountList"
+    - "#nav-cart"
+  login_form_selectors:
+    - "#ap_email"
+    - "#ap_password"
+
+cookies:
+  reject: '#sp-cc-rejectall-link, button:text-is("Ablehnen"), button:text-is("Reject"), button:text-is("Refuser"), button:text-is("Rifiuta")'
+
+location:
+  dismiss: "#sp-cc-rejectall-link"
+  continue_selectors:
+    - 'button[alt="Continue shopping"]'
+    - 'button:has-text("Continue shopping")'
+    - 'button:has-text("Continuer les achats")'
+    - 'button:text-is("Weiter shoppen")'
+    - 'button[alt="Weiter shoppen"]'
+    - 'input[type="submit"][value="Weiter shoppen"]'
+    - 'button:has-text("Continua lo shopping")'
+    - 'button:has-text("Continuar comprando")'
+    - 'input[value="Continue shopping"]'
+  trigger: "#nav-global-location-popover-link"
+  postal_input: "#GLUXZipUpdateInput"
+  submit: "#GLUXZipUpdate .a-button-input"
+  confirm: "#GLUXConfirmClose"
+  result: "#glow-ingress-block"
+  api:
+    endpoint: "/portal-migration/hz/glow/address-change?actionSource=glow"
+    token_selector: ".a-popover-modal meta[name='anti-csrftoken-a2z'], meta[name='anti-csrftoken-a2z']"
+    postal_field: zipCode
+    body:
+      locationType: LOCATION_INPUT
+      storeContext: generic
+      deviceType: web
+      pageType: Detail
+      actionSource: glow
+
+selectors:
+  search_input: "#twotabsearchtextbox"
+  search_button: "#nav-search-submit-button"
+  product_title: "#productTitle"
+  product_price: ".a-price .a-offscreen"
+  next_page: ".s-pagination-next"
+
+extraction:
+  default_link_pattern: product
+  default_page_type: product_detail
+  default_list_page_type: search_result
+  link_patterns:
+    product:
+      match_regex: 'amazon\.com/(?:.*/)?dp/([A-Z0-9]{10})'
+      id_field: asin
+      id_group: 1
+  page_types:
+    search_result:
+      url_patterns:
+        - "/s?"
+        - "/s/"
+      item_selector: '[data-component-type="s-search-result"]'
+      fields:
+        title:
+          selector: "h2 a span"
+        price:
+          selector: ".a-price .a-offscreen"
+        url:
+          selector: "h2 a"
+          attr: href
+    product_detail:
+      url_patterns:
+        - "/dp/"
+      ready_selectors:
+        - "#productTitle"
+      optional_ready_selectors:
+        - "#landingImage"
+      fields:
+        title:
+          selector: "#productTitle"
+        price:
+          selector: ".a-price .a-offscreen"
+        asin:
+          source: url
+          regex: '/dp/([A-Z0-9]{10})'
+          group: 1
+
+crawl:
+  rate_limit_ms: 2000
+  scroll_strategy: paginate
+  max_pages: 10

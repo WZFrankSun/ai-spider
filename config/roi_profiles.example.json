@@ -1,0 +1,20 @@
+{
+  "profiles": [
+    {
+      "id": "amazon_product_detail_de",
+      "platform": "amazon",
+      "country": "DE",
+      "page_type": "product_detail",
+      "selector": null,
+      "region": {"left": 0.65, "top": 0.55, "right": 0.98, "bottom": 0.90}
+    },
+    {
+      "id": "amazon_product_detail_it",
+      "platform": "amazon",
+      "country": "IT",
+      "page_type": "product_detail",
+      "selector": null,
+      "region": {"left": 0.65, "top": 0.55, "right": 0.98, "bottom": 0.90}
+    }
+  ]
+}

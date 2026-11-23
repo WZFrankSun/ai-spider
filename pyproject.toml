@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-spider"
+version = "0.1.0"
+description = "AI Spider Framework"
+requires-python = ">=3.12"
+dependencies = [
+    "playwright",
+    "fastapi",
+    "uvicorn",
+    "pydantic",
+    "pydantic-settings",
+    "loguru",
+    "openai",
+    "pyyaml",
+    "sqlalchemy>=2,<3",
+    "alembic>=1,<2",
+    "asyncmy>=0.2,<1",
+    "pytesseract>=0.3,<1",
+    "pillow>=10,<13",
+    "aiosqlite>=0.20,<1",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
+[tool.setuptools.package-data]
+app = ["platforms/**/*.yaml"]

@@ -284,7 +284,7 @@ async def scan_with_retry(scanner: Scanner, target: ScanTarget, attempts: int = 
 
 - Create: `app/monitoring/application/scheduled_scan.py`
 - Create: `app/monitoring/entrypoints/hourly_scan.py`
-- Modify: `app/config.py`
+- Modify: `app/monitoring/runtime_config.py`
 - Test: `tests/test_scheduled_scan.py`
 
 **接口**：

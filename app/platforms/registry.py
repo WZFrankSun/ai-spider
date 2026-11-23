@@ -8,11 +8,6 @@ PLATFORMS_DIR = Path(__file__).parent
 _cache: dict[str, PlatformProfile] = {}
 
 
-def default_auth_path(platform_name: str, base_dir: Path | None = None) -> Path:
-    root = base_dir or Path(__file__).resolve().parents[2]
-    return root / "examples" / "auth" / f"{platform_name}.json"
-
-
 class PlatformRegistry:
     """
     Platform registry class.

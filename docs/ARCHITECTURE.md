@@ -44,7 +44,7 @@
 |---|---|---|
 | `prd_mvp.md` 要求 MVP 不接数据库，架构输入确定 MySQL 为系统事实来源 | MVP 继续使用内存，真实扫描阶段接入 MySQL | 不修改 MVP 范围，同时提前固定持久化边界 |
 | `prd_mvp.md` 暂不实现每小时后台调度，业务目标要求每小时扫描 | MVP 只提供手动扫描，真实扫描阶段加入调度器 | 调度器不进入当前演示闭环 |
-| `TDD.md` 要求 `not_scanned`、`scanning` 和演示结果切换，现有 `app/mvp` 代码仍以 `demo_status` 为主 | 将状态机作为目标设计，补充实现任务 | 当前代码不能视为这些状态已经完整实现 |
+| `TDD.md` 要求 `not_scanned`、`scanning` 和演示结果切换，早期演示代码曾以 `demo_status` 为主 | 将状态机作为目标设计，补充实现任务 | 状态机现已收敛到 `app/monitoring/domain` |
 | 第一版不接飞书，但完整业务需要通知 | 先定义 `Notifier` 接口，使用空实现或记录实现 | 后续接入飞书不改变领域用例 |
 
 这些是设计约束和实现顺序的差异，不改变已经确认的 MVP 业务目标。
@@ -183,14 +183,11 @@ app/
     api/
       routes.py
       schemas.py
-  mvp/
-    api.py
-    store.py
-    models.py
+  monitoring/
     templates/
 ```
 
-当前 `app/mvp` 可以继续作为演示入口。真实扫描接入时，优先将 `DemoStore` 的行为迁移到 `monitoring` 的应用用例和适配器，不直接把 Playwright 调用塞进 FastAPI 路由。
+演示能力已经收敛到 `app/monitoring`：`MonitoringContainer.demo()` 提供确定性 `DemoScanner`，`create_demo_app()` 作为本地演示入口，页面模板位于 `app/monitoring/templates/`。不再保留独立的 `app/mvp` 模块，避免同一套状态规则存在两份实现。
 
 ## 8. 领域模型
 

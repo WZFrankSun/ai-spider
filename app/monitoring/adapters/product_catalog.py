@@ -20,7 +20,7 @@ class ProductCatalogLoader(Protocol):
 
 
 class JsonProductCatalogLoader:
-    allowed_countries = frozenset({"DE", "IT", "FR"})
+    allowed_countries = frozenset({"DE", "IT", "FR", "GB"})
 
     def load(self, path: str) -> list[Product]:
         source = Path(path)

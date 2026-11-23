@@ -18,7 +18,7 @@
 - `app/core/executor.py`：工具执行和错误封装。
 - `app/workflows/crawl_list.py`：列表和详情页批量工作流。
 
-MVP 采用独立的 `app/mvp` 演示模块，避免改变已有爬虫工具的公共行为。
+演示能力收敛在 `app/monitoring` 模块内（`MonitoringContainer.demo()` 与 `create_demo_app()`），避免改变已有爬虫工具的公共行为。
 
 ## 3. 任务依赖图
 
@@ -61,9 +61,9 @@ T7 真实 Playwright/OCR 接入（后续，不属于 MVP）
 
 **建议文件**：
 
-- `app/mvp/models.py`
-- `app/mvp/store.py`
-- `tests/test_mvp_store.py`
+- `app/monitoring/domain/models.py`
+- `app/monitoring/domain/policies.py`
+- `tests/test_monitoring_use_cases.py`
 
 **开发顺序**：
 
@@ -80,8 +80,9 @@ T7 真实 Playwright/OCR 接入（后续，不属于 MVP）
 
 **建议文件**：
 
-- `app/mvp/store.py`
-- `tests/test_mvp_store.py`
+- `app/monitoring/application/scan_product.py`
+- `app/monitoring/domain/policies.py`
+- `tests/test_monitoring_use_cases.py`
 
 **行为**：
 
@@ -108,10 +109,10 @@ T7 真实 Playwright/OCR 接入（后续，不属于 MVP）
 
 **建议文件**：
 
-- `app/mvp/api.py`
-- `app/mvp/__init__.py`
+- `app/monitoring/api/routes.py`
+- `app/monitoring/api/__init__.py`
 - `app.py`
-- `tests/test_mvp_api.py`
+- `tests/test_monitoring_api.py`
 
 **接口**：
 
@@ -139,10 +140,10 @@ T7 真实 Playwright/OCR 接入（后续，不属于 MVP）
 
 **建议文件**：
 
-- `app/mvp/store.py`
-- `app/mvp/api.py`
-- `tests/test_mvp_store.py`
-- `tests/test_mvp_api.py`
+- `app/monitoring/application/scan_product.py`
+- `app/monitoring/application/verify_alert.py`
+- `tests/test_monitoring_use_cases.py`
+- `tests/test_monitoring_api.py`
 
 **行为**：
 
@@ -172,7 +173,7 @@ POST /api/products/{product_id}/demo-result
 
 **建议文件**：
 
-- `app/mvp/templates/index.html`
+- `app/monitoring/templates/index.html`
 
 **页面内容**：
 

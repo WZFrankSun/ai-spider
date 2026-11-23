@@ -91,10 +91,10 @@ class MonitoringApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 409)
 
-    def test_legacy_mvp_entry_exposes_monitoring_demo_result_endpoint(self):
-        from app.mvp.api import create_app
+    def test_demo_entry_exposes_monitoring_demo_result_endpoint(self):
+        from app.monitoring.api.routes import create_demo_app
 
-        client = TestClient(create_app())
+        client = TestClient(create_demo_app())
         response = client.post(
             "/api/products/DE-001/demo-result",
             json={"result": "healthy"},

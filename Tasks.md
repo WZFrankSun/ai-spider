@@ -337,9 +337,9 @@ class HourlyScanRunner:
 
 - Modify: `app/monitoring/api/routes.py`
 - Modify: `app/monitoring/api/schemas.py`
-- Modify: `app/mvp/templates/index.html`
+- Modify: `app/monitoring/templates/index.html`
 - Test: `tests/test_real_scan_api.py`
-- Test: `tests/test_mvp_page.py`
+- Test: `tests/test_monitoring_page.py`
 
 **步骤**：
 

@@ -137,11 +137,8 @@ class PlaywrightScanner:
             stage = "continue shopping"
             try:
                 location = getattr(profile, "location", {})
-                for selector in location.get("continue_selectors", []):
-                    button = page.locator(selector).first
-                    if await button.count() and await button.is_visible():
-                        await button.click(timeout=min(self.timeout_ms, 5_000))
-                        break
+                continue_selectors = location.get("continue_selectors", [])
+                await self._click_continue_shopping(page, continue_selectors)
 
                 stage = "reject optional cookies"
                 reject_selector = getattr(profile, "cookies", {}).get("reject")
@@ -150,6 +147,8 @@ class PlaywrightScanner:
                     if self._is_marketplace_home(page.url, product.url):
                         stage = "reopen product from marketplace homepage"
                         await self._reopen_product(page, product.url)
+                        stage = "continue shopping after reopening product"
+                        await self._click_continue_shopping(page, continue_selectors)
             except Exception as exc:
                 evidence = await self._capture_ready_failure(page, product, started_at)
                 return self._failure(
@@ -333,6 +332,13 @@ class PlaywrightScanner:
                     # The button may disappear after the page updates.
                     pass
         return await self.roi_cropper.crop(screenshot, profile, page=page)
+
+    async def _click_continue_shopping(self, page, selectors: list[str]) -> None:
+        for selector in selectors:
+            button = page.locator(selector).first
+            if await button.count() and await button.is_visible():
+                await button.click(timeout=min(self.timeout_ms, 5_000))
+                return
 
     async def _reject_optional_cookies(self, page, selector: str) -> None:
         reject = page.locator(selector).first

@@ -180,6 +180,13 @@ class PlaywrightScannerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(observation.status, ProductScanStatus.HEALTHY)
         page.locator.assert_called_once_with(selector)
 
+    def test_amazon_continue_selectors_cover_italian_alternate_label(self):
+        from app.platforms.registry import PlatformRegistry
+
+        selectors = PlatformRegistry.load("amazon").location["continue_selectors"]
+        self.assertIn('button:text-is("Continua con gli acquisti")', selectors)
+        self.assertIn('input[type="submit"][value="Continua con gli acquisti"]', selectors)
+
     async def test_rejects_cookies_on_market_homepage_and_reopens_product(self):
         from unittest.mock import AsyncMock, Mock
 

@@ -31,6 +31,14 @@
       "page_type": "product_detail",
       "selector": "#rightCol",
       "region": null
+    },
+    {
+      "id": "amazon_product_detail_gb_buy_box",
+      "platform": "amazon",
+      "country": "GB",
+      "page_type": "product_detail",
+      "selector": "#rightCol",
+      "region": null
     }
   ]
 }

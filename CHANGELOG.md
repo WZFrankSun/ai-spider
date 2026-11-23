@@ -2,6 +2,14 @@
 
 每次任务记一条，写明日期、目的、涉及文件、具体变化和测试结果。
 
+- 2026-11-23｜清理 MVP 死代码和空目录｜涉及 `app/mvp/`（删除）、`app/monitoring/api/routes.py`、`app/monitoring/api/__init__.py`、`app/monitoring/templates/`、`app/tools/extract/dom_snapshot.py`（删除）、`app/config`、`app/tools/network`、`app/workflow`（空目录删除）、`tests/`、`pyproject.toml`、`TDD.md`、`TASK.md`、`Tasks.md`、`docs/ARCHITECTURE.md`｜删除独立 `app/mvp` 模块，演示能力收敛到 monitoring 内的 `create_demo_app()`，`legacy_auto_recover` 更名 `demo_auto_recover` 并在模块内实现，页面模板移入 `app/monitoring/templates/`；135 个测试通过；Amazon Live 验收：`DE-amazon-001` 为 `healthy`（OCR 命中"In den Einkaufswagen"），`DE-amazon-negative-001` 为 `inventory_risk`（OCR 命中"Derzeit nicht verfügbar"）且告警 `alert-DE-amazon-negative-001` 保持单条累计，定时扫描全程关闭。
+
+- 2026-11-23｜执行四个 Amazon 站点 Live 验收｜涉及商品目录、目录校验、ROI 和加购词库｜加入英国站和跨站候选；德国、意大利、法国、英国各验证 3 个健康和 3 个无加购案例，技术失败单列；142 个测试通过。
+
+- 2026-11-23｜修复跨站点继续购物提示｜涉及 Amazon 平台配置、扫描器及测试｜补充意大利语变体和法语候选，重新打开商品链接后再检查提示｜142 个测试通过；健康与异常样例均尝试新版 Live，但浏览器访问 Amazon 被拒绝。
+
+- 2026-11-23｜简化 Live 监控面板｜涉及 FastAPI 页面渲染、引导配置、前端模板和页面测试｜隔离演示控件、改用 SKU 或 ASIN 展示、区分活动和关闭告警、优化表格层级｜141 个测试通过，Chromium 验证跨站点历史、关闭告警及三种窗口宽度。
+
 - 2026-11-23｜完善缺少加购入口告警判定｜涉及扫描判定、词库加载、词库配置和测试｜确认无可用 DOM 按钮直接判风险；仅用截图时要求命中多语言不可购买文案且无加购文字，保留冲突与技术诊断｜140 个测试通过，未使用新版重跑 Amazon Live。
 
 - 2026-11-23｜新增两款德国 Amazon Live 验收商品｜涉及 `config/products.real.json`｜新增 Razer Blade 16 和 MSI RTX 4080 SUPRIM X，复用购买区 ROI｜两次真实扫描均为库存风险，保存截图和记录，各生成一条活动告警。

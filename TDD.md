@@ -38,22 +38,23 @@
 
 ### 3.1 单元测试
 
-单元测试针对 `DemoStore`、状态转换和告警去重。测试不依赖 FastAPI、浏览器或网络。
+单元测试针对演示扫描器、状态转换和告警去重。测试不依赖 FastAPI、浏览器或网络。
 
 重点文件：
 
-- `app/mvp/models.py`
-- `app/mvp/store.py`
-- `tests/test_mvp_store.py`
+- `app/monitoring/adapters/demo_scanner.py`
+- `app/monitoring/domain/models.py`
+- `app/monitoring/domain/policies.py`
+- `tests/test_monitoring_use_cases.py`
 
 ### 3.2 API 合约测试
 
-使用 FastAPI 的 `TestClient` 测试 HTTP 状态码、JSON 字段和错误响应。每个测试创建独立的应用和 `DemoStore`，避免测试之间共享内存状态。
+使用 FastAPI 的 `TestClient` 测试 HTTP 状态码、JSON 字段和错误响应。每个测试创建独立的应用和内存仓储，避免测试之间共享内存状态。
 
 重点文件：
 
-- `app/mvp/api.py`
-- `tests/test_mvp_api.py`
+- `app/monitoring/api/routes.py`
+- `tests/test_monitoring_api.py`
 
 ### 3.3 页面冒烟测试
 

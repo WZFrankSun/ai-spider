@@ -2,10 +2,10 @@ import unittest
 
 from fastapi.testclient import TestClient
 
-from app.monitoring.api.routes import create_monitoring_app
+from app.monitoring.api.routes import MonitoringContainer, create_monitoring_app
 
 
-class MvpPageTests(unittest.TestCase):
+class MonitoringPageTests(unittest.TestCase):
     def test_page_contains_state_controls_and_tables(self):
         client = TestClient(create_monitoring_app())
 
@@ -40,7 +40,18 @@ class MvpPageTests(unittest.TestCase):
     def test_page_contains_monitoring_status_panel(self):
         html = TestClient(create_monitoring_app()).get("/").text
         self.assertIn("monitoring-status", html)
-        self.assertIn("扫描航线", html)
+        self.assertNotIn("前置条件", html)
+        self.assertNotIn("扫描航线", html)
+
+    def test_real_page_excludes_demo_controls(self):
+        container = MonitoringContainer.demo()
+        container.mode = "real"
+        client = TestClient(create_monitoring_app(container))
+        html = client.get("/").text
+        self.assertNotIn("演示结果", html)
+        self.assertNotIn("/demo-result", html)
+        self.assertIn("查看历史", html)
+        self.assertEqual(client.post("/api/products/example/demo-result", json={"result": "healthy"}).status_code, 404)
 
     def test_page_contains_ocr_evidence_and_screenshot_columns(self):
         html = TestClient(create_monitoring_app()).get("/").text

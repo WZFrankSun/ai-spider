@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from pathlib import Path
 from typing import Any, Callable
 
@@ -36,7 +37,7 @@ class MonitoringContainer:
     scan_product: ScanProduct
     verify_alert: VerifyAlert
     dismiss_alert: DismissAlert
-    legacy_auto_recover: bool = False
+    demo_auto_recover: bool = False
     mode: str = "demo"
     scheduler_enabled: bool = False
     scheduler_running: bool = False
@@ -60,7 +61,7 @@ class MonitoringContainer:
         scans: MemoryScanRepository | None = None,
         alerts: MemoryAlertRepository | None = None,
         mode: str = "real",
-        legacy_auto_recover: bool = False,
+        demo_auto_recover: bool = False,
     ) -> "MonitoringContainer":
         scans = scans or MemoryScanRepository()
         alerts = alerts or MemoryAlertRepository()
@@ -73,7 +74,7 @@ class MonitoringContainer:
             scan_product=ScanProduct(products, scans, alerts, scanner, coordinator),
             verify_alert=VerifyAlert(products, scans, alerts, scanner, coordinator),
             dismiss_alert=DismissAlert(alerts),
-            legacy_auto_recover=legacy_auto_recover,
+            demo_auto_recover=demo_auto_recover,
             mode=mode,
         )
 
@@ -81,19 +82,25 @@ class MonitoringContainer:
 def create_monitoring_app(
     container: MonitoringContainer | None = None,
     *,
-    legacy_auto_recover: bool = False,
+    demo_auto_recover: bool = False,
     lifespan: Callable | None = None,
     monitoring_config: MonitoringRuntimeConfig | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Cart Monitor MVP", version="0.2.0", lifespan=lifespan)
     state = container or MonitoringContainer.demo()
-    state.legacy_auto_recover = state.legacy_auto_recover or legacy_auto_recover
+    state.demo_auto_recover = state.demo_auto_recover or demo_auto_recover
     runtime_config = monitoring_config or MonitoringRuntimeConfig(mode=state.mode)
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
-        template = Path(__file__).resolve().parents[2] / "mvp" / "templates" / "index.html"
-        return template.read_text(encoding="utf-8")
+        template = Path(__file__).resolve().parents[1] / "templates" / "index.html"
+        html = template.read_text(encoding="utf-8")
+        return re.sub(
+            r"(?:<!--|/\*) demo:start (?:-->|\*/)(.*?)(?:<!--|/\*) demo:end (?:-->|\*/)",
+            lambda block: block[1] if state.mode == "demo" else "",
+            html,
+            flags=re.DOTALL,
+        )
 
     @app.get("/api/health")
     def health() -> dict[str, Any]:
@@ -179,10 +186,10 @@ def create_monitoring_app(
 
     @app.post("/api/alerts/{alert_id}/verify")
     async def verify(alert_id: str) -> dict:
-        if state.legacy_auto_recover:
-            legacy_alert = await state.alerts.get(alert_id)
-            if legacy_alert is not None:
-                state.scanner.set_outcome(legacy_alert.product_id, ProductScanStatus.HEALTHY)
+        if state.demo_auto_recover:
+            demo_alert = await state.alerts.get(alert_id)
+            if demo_alert is not None:
+                state.scanner.set_outcome(demo_alert.product_id, ProductScanStatus.HEALTHY)
         try:
             alert = await state.verify_alert.execute(alert_id)
         except KeyError as error:
@@ -206,6 +213,11 @@ def create_monitoring_app(
         return _alert_json(alert)
 
     return app
+
+
+def create_demo_app() -> FastAPI:
+    """本地演示入口：使用确定性 DemoScanner，复查时自动模拟商品已恢复。"""
+    return create_monitoring_app(MonitoringContainer.demo(), demo_auto_recover=True)
 
 
 def _demo_products() -> list[Product]:

@@ -95,6 +95,24 @@
         "Currently not available",
         "Not available for purchase"
       ]
+    },
+    {
+      "country": "GB",
+      "platform": "amazon",
+      "page_type": "product_detail",
+      "phrases": [
+        "Add to basket",
+        "Add to cart",
+        "Add to your basket",
+        "Add to your cart"
+      ],
+      "unavailable_phrases": [
+        "Currently unavailable",
+        "Temporarily unavailable",
+        "Out of stock",
+        "Sold out",
+        "Not available for purchase"
+      ]
     }
   ]
 }

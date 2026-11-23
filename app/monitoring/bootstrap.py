@@ -103,4 +103,4 @@ def create_application(config: MonitoringRuntimeConfig | None = None) -> FastAPI
     runtime_config = config or load_monitoring_config()
     container = build_monitoring_container(runtime_config)
     lifespan = partial(monitoring_lifespan, container=container, config=runtime_config)
-    return create_monitoring_app(container, lifespan=lifespan)
+    return create_monitoring_app(container, lifespan=lifespan, monitoring_config=runtime_config)

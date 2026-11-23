@@ -37,6 +37,18 @@ location:
     - 'button:has-text("Continua lo shopping")'
     - 'button:has-text("Continuar comprando")'
     - 'input[value="Continue shopping"]'
+    - 'button:text-is("Continua con gli acquisti")'
+    - 'button[alt="Continua con gli acquisti"]'
+    - 'input[type="submit"][value="Continua con gli acquisti"]'
+    - 'button:text-is("Continuer les achats")'
+    - 'button[alt="Continuer les achats"]'
+    - 'input[type="submit"][value="Continuer les achats"]'
+    - 'button:text-is("Continuer vos achats")'
+    - 'button[alt="Continuer vos achats"]'
+    - 'input[type="submit"][value="Continuer vos achats"]'
+    - 'button:text-is("Poursuivre les achats")'
+    - 'button[alt="Poursuivre les achats"]'
+    - 'input[type="submit"][value="Poursuivre les achats"]'
   trigger: "#nav-global-location-popover-link"
   postal_input: "#GLUXZipUpdateInput"
   submit: "#GLUXZipUpdate .a-button-input"

@@ -7,8 +7,8 @@
   <style>
     :root { font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif; color: #162638; background: #eef3f6; --navy:#0e1b2a; --green:#1c9a78; --amber:#d97732; --red:#c94b4b; --line:#dce4ea; }
     * { box-sizing: border-box; } body { margin: 0; background: #eef3f6; }
-    header { background: var(--navy); color: white; padding: 32px max(24px, calc((100vw - 1240px)/2)); border-bottom: 4px solid var(--green); }
-    header strong { font-size: 28px; letter-spacing: -.03em; } main { max-width: 1240px; margin: 28px auto; padding: 0 20px 56px; }
+    header { background: var(--navy); color: white; padding: 32px max(24px, calc((100vw - 1920px)/2)); border-bottom: 4px solid var(--green); }
+    header strong { font-size: 28px; letter-spacing: -.03em; } main { max-width: 1920px; margin: 28px auto; padding: 0 20px 56px; }
     .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
     .card, section { background: #ffffff; border: 1px solid var(--line); border-radius: 16px; padding: 18px; box-shadow: 0 12px 30px #0e1b2a0d; }
     .metric { font-size: 28px; font-weight: 700; margin-top: 8px; }
@@ -19,6 +19,7 @@
     .table-scroll { overflow-x: auto; border-radius: 5px; }
     th { color: #fff; background: #17364d; font-weight: 600; }
     th + th { border-left: 1px solid #496476; }
+    tbody td + td { border-left: 1px solid #d4e0e8; }
     tbody tr:nth-child(even) { background: #f2f7fa; }
     tbody tr:hover, tbody tr:focus-within { background: #e4eff4; }
     td { overflow-wrap: anywhere; }
@@ -48,19 +49,63 @@
     .filters { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:14px 0; } .filters select { min-width:130px; }
     .evidence { max-width:280px; word-break:break-word; font-size:12px; line-height:1.5; } .evidence a { color:#176c9b; }
     @media (max-width: 760px) { .summary { grid-template-columns: repeat(2, 1fr); } header { padding: 20px; } }
+    .workspace-tabs { display:flex; gap:6px; margin:16px 0; border-bottom:1px solid var(--line); }
+    .workspace-tabs[hidden] { display:none; }
+    .workspace-tabs [aria-pressed="true"] { border-bottom:3px solid #146b73; color:#146b73; font-weight:700; }
+    .entry-fields { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:16px; margin-bottom:16px; }
+    .entry-fields label { display:grid; gap:6px; }
+    .entry-fields input, .filters input { width:100%; border:1px solid #cbd5df; border-radius:7px; padding:8px; }
+    .filters input { width:150px; }
+    .fault-details { display:inline-block; position:relative; }
+    .fault-details summary { cursor:pointer; }
+    .fault-details span { display:none; width:min(32ch, 65vw); padding:8px; border:1px solid #cbd5df; background:white; white-space:normal; overflow-wrap:anywhere; }
+    .wide-table { min-width: 1220px; }
+    .record-key, .record-time, .record-actions, .record-state { white-space:nowrap; }
+    .record-key { min-width: 7ch; }
+    .record-name { min-width: 18ch; max-width: 34ch; }
+    .evidence details { white-space:normal; max-width:30ch; }
+    .evidence summary { cursor:pointer; }
+    .table-scroll { max-width:100%; }
+    .fault-details:hover span, .fault-details:focus-within span, .fault-details[open] span { display:block; }
   </style>
 </head>
 <body>
   <header><strong>商品加购入口库存风险监控</strong><div class="muted" style="color:#b9cbd5;margin-top:8px">跨境运营监控台 · 关注各市场的加购可用性</div></header>
   <main>
     <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+    <nav class="workspace-tabs" id="workspace-tabs" aria-label="商品工作区" hidden>
+      <button type="button" data-view="scan" aria-pressed="true">商品扫描</button>
+      <button type="button" data-view="entry" aria-pressed="false">商品录入</button>
+    </nav>
+    <section id="entry-view" hidden>
+      <h2>商品录入</h2>
+      <form id="product-entry">
+        <div class="entry-fields">
+          <label>平台<select name="platform">
+            <option value="amazon">Amazon</option><option value="tiktok">TikTok</option><option value="temu">Temu</option><option value="ebay">eBay</option><option value="shein">SHEIN</option>
+          </select></label>
+          <label>店铺代码<select name="store_code"><option>H1-A1</option><option>H2-A1</option><option>H4-A1</option></select></label>
+          <label>站点<select name="country" id="entry-country" required></select></label>
+          <label>ASIN<input name="asin" maxlength="10" placeholder="Amazon 可从链接识别"></label>
+          <label>SKU<input name="sku" maxlength="160" required></label>
+          <label>商品名<input name="name" maxlength="255" required></label>
+          <label>商品 URL<input name="url" type="url" required></label>
+
+          <label>添加人<select name="added_by" required><option value="">请选择</option><option>Frank</option><option>Lvy</option><option>Nova</option><option>Drake</option></select></label>
+        </div>
+        <button class="primary" type="submit">保存商品</button>
+        <button id="view-created-product" type="button" hidden>查看商品</button>
+        <p id="entry-feedback" role="status"></p>
+      </form>
+    </section>
+    <div id="scan-view">
     <section id="monitoring-status" class="monitoring-status"><div id="mode-value">读取运行模式…</div></section>
     <div id="summary" class="summary"></div>
     <section>
       <h2>商品扫描</h2>
       <p class="muted">每次扫描都保留时间、耗时、OCR 匹配词和截图证据。技术故障不会创建库存风险告警，也不会自动关闭已有告警。</p>
-      <div class="filters"><label class="muted">筛选国家</label><select id="country-filter"><option value="all">全部</option><option value="DE">德国</option><option value="IT">意大利</option><option value="FR">法国</option></select><label class="muted">筛选状态</label><select id="status-filter"><option value="all">全部</option><option value="healthy">健康</option><option value="inventory_risk">库存风险</option><option value="technical_failure">技术故障</option></select></div>
-      <div class="table-scroll" tabindex="0" role="region" aria-label="数据表"><table><thead><tr><th>国家</th><th>商品 / SKU 或 ASIN</th><th>平台</th><th>状态</th><!-- demo:start --><th>演示结果</th><!-- demo:end --><th>最近扫描</th><th class="numeric">耗时</th><th>OCR 证据 / 截图证据</th><th>操作</th></tr></thead><tbody id="products"></tbody></table></div>
+      <div class="filters"><label for="country-filter">站点</label><select id="country-filter"><option value="all">全部</option></select><label for="store-filter">店铺代码</label><select id="store-filter"><option value="all">全部</option></select><label for="sku-filter">筛选 SKU</label><input id="sku-filter" type="search"><label class="muted">筛选状态</label><select id="status-filter"><option value="all">全部</option><option value="healthy">健康</option><option value="inventory_risk">库存风险</option><option value="technical_failure">技术故障</option></select></div>
+      <div class="table-scroll" tabindex="0" role="region" aria-label="数据表"><table class="wide-table"><thead><tr><th>序号</th><th>平台</th><th>店铺代码</th><th>站点</th><th>ASIN</th><th>SKU</th><th>Location</th><th>商品名</th><th>URL</th><th>添加人</th><th>状态</th><!-- demo:start --><th>演示结果</th><!-- demo:end --><th>最近扫描</th><th class="numeric">耗时</th><th>OCR 证据 / 截图证据</th><th>操作</th></tr></thead><tbody id="products"></tbody></table></div>
     </section>
     <section>
       <h2>告警事件</h2>
@@ -71,8 +116,9 @@
       <h2 id="sku-history-title">扫描历史</h2>
       <button id="close-history" type="button">收起历史</button>
       <p class="muted">每次扫描独立保留截图证据，历史记录不会被下一次扫描覆盖。</p>
-      <div class="table-scroll" tabindex="0" role="region" aria-label="数据表"><table><thead><tr><th>扫描时间</th><th>商品</th><th>状态</th><th>OCR</th><th>匹配词</th><th>错误</th><th>截图</th></tr></thead><tbody id="scan-history"></tbody></table></div>
+      <div class="table-scroll" tabindex="0" role="region" aria-label="数据表"><table class="wide-table"><thead><tr><th>平台</th><th>店铺代码</th><th>站点</th><th>ASIN</th><th>SKU</th><th>商品名</th><th>URL</th><th>历史状态</th><th>扫描时间</th><th>OCR 证据 / 截图证据</th></tr></thead><tbody id="scan-history"></tbody></table></div>
     </section>
+    </div>
   </main>
   <script>
     const labels = { not_scanned: '尚未扫描', scanning: '扫描中', healthy: '健康', inventory_risk: '疑似库存异常', technical_failure: '技术故障', open: '待处理', reopened: '重新打开', pending_verification: '待验证', resolved: '已恢复', dismissed: '已确认误报', acknowledged: '已确认' };
@@ -107,8 +153,9 @@
         const response = await fetch(url, { ...options, signal: controller.signal });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
-          const error = new Error(payload.detail || response.statusText || '请求失败');
+          const error = new Error((Array.isArray(payload.detail) ? payload.detail.map(item => item.msg).join("；") : (payload.detail?.message || payload.detail)) || response.statusText || '请求失败');
           error.status = response.status;
+          error.productId = payload.detail?.product_id;
           throw error;
         }
         return payload;
@@ -138,6 +185,7 @@
     const activeAlertStates = new Set(['open', 'acknowledged', 'reopened', 'pending_verification']);
     function productLabel(product) {
       const sku = product.sku || product.id;
+      if (product.store_code) return product.store_code + '_' + sku;
       const temporaryAsin = /^TEMP-ASIN-([A-Z0-9]{10})$/i.exec(sku);
       return temporaryAsin ? 'ASIN ' + temporaryAsin[1].toUpperCase() : sku;
     }
@@ -147,6 +195,12 @@
     async function render() {
       const [products, alerts, scans, runtime] = await Promise.all([json('/api/products'), json('/api/alerts'), json('/api/scans'), json('/api/monitoring/status')]);
       cachedProducts = products;
+      document.querySelector('#workspace-tabs').hidden = runtime.mode !== 'real';
+      const storeSelect = document.querySelector('#store-filter');
+      const selectedStore = storeSelect.value;
+      const stores = [...new Set(products.map(product => product.store_code).filter(Boolean))].sort();
+      storeSelect.innerHTML = '<option value="all">全部</option>' + stores.map(store => `<option>${esc(store)}</option>`).join('');
+      if (stores.includes(selectedStore)) storeSelect.value = selectedStore;
       cachedScans = scans;
       document.querySelector('#mode-value').textContent = `${runtime.mode === 'demo' ? 'Demo 演示' : 'Real 真实输入'} · ${runtime.input_mode}`;
       const latestScans = new Map();
@@ -159,13 +213,19 @@
       document.querySelector('#summary').innerHTML = [['监控商品', products.length], ['德国', products.filter(p => p.country === 'DE').length], ['意大利', products.filter(p => p.country === 'IT').length], ['法国', products.filter(p => p.country === 'FR').length], ['当前告警', alerts.filter(a => activeAlertStates.has(a.status)).length]].map(([label, value]) => `<div class="card"><div class="muted">${label}</div><div class="metric">${value}</div></div>`).join('');
       const country = document.querySelector('#country-filter')?.value || 'all';
       const filterStatus = document.querySelector('#status-filter')?.value || 'all';
-      document.querySelector('#products').innerHTML = products.filter(p => (country === 'all' || p.country === country) && (filterStatus === 'all' || p.status === filterStatus)).map(p => {
+      const store = document.querySelector('#store-filter').value;
+      const sku = document.querySelector('#sku-filter').value.trim().toLowerCase();
+      document.querySelector('#products').innerHTML = products.filter(p =>
+        (country === 'all' || p.country === country) &&
+        (store === 'all' || p.store_code === store) &&
+        (filterStatus === 'all' || p.status === filterStatus) &&
+        p.sku.toLowerCase().includes(sku)
+      ).map((p, index) => {
         const scan = latestScans.get(p.id) || {};
         const scanning = p.status === 'scanning' || scanStarts.has(p.id);
         const status = scanning ? 'scanning' : p.status;
-        const reason = scan.error_message || '';
         const time = formatScanTime(scan, p.id);
-        return `<tr data-product-id="${esc(p.id)}"><td>${esc(p.country)}</td><td>${esc(p.name || productLabel(p))}<div class="muted">${esc(productLabel(p))}</div></td><td>${esc(p.platform)}</td><td><span id="status-${esc(p.id)}" class="pill ${statusClass(status)}">${labels[status] || esc(status)}</span>${p.status === 'technical_failure' ? `<div class="muted">错误原因：${esc(reason || '未提供')}</div>` : ''}</td>/* demo:start */<td><div class="demo-result"><select id="result-${esc(p.id)}"><option value="healthy">健康</option><option value="inventory_risk">库存异常</option><option value="technical_failure">技术故障</option></select><button data-operation="demo-result:${esc(p.id)}" onclick="setResult('${esc(p.id)}', this)">设置</button></div></td>/* demo:end */<td data-last-scan="${esc(time.time)}">${esc(time.label)}</td><td class="numeric" data-scan-duration="${esc(time.duration)}">${esc(time.duration)}</td><td class="scan-evidence evidence" data-evidence="${esc(p.id)}">${scan.matched_phrase ? `<div>OCR：${esc(scan.matched_phrase)}</div>` : ''}${scan.error_code ? `<div class="muted">${scan.status === "healthy" ? "诊断" : "错误"}：${esc(scan.error_code)}</div>` : ''}${scan.screenshots?.full_url ? `<div><a href="${esc(scan.screenshots.full_url)}" target="_blank" rel="noreferrer">查看页面截图</a></div>` : ''}${scan.screenshots?.roi_url ? `<div><a href="${esc(scan.screenshots.roi_url)}" target="_blank" rel="noreferrer">查看 ROI</a></div>` : ''}${!scan.matched_phrase && !scan.error_code && !scan.screenshots?.full_url && !scan.screenshots?.roi_url ? '<span class="muted">本次尚无证据</span>' : ''}</td><td><button class="primary" data-operation="scan:${esc(p.id)}" onclick="scan('${esc(p.id)}', this)" ${scanning ? 'disabled' : ''}>立即扫描</button> <button type="button" data-history-product="${esc(p.id)}">查看历史</button></td></tr>`;
+        return `<tr data-product-id="${esc(p.id)}"><td>${index + 1}</td>${productCells(p, true)}<td>${esc(p.added_by || '未填写')}</td><td class="record-state">${scanStatus(status, scan, 'status-' + p.id)}</td>/* demo:start */<td><div class="demo-result"><select id="result-${esc(p.id)}"><option value="healthy">健康</option><option value="inventory_risk">库存异常</option><option value="technical_failure">技术故障</option></select><button data-operation="demo-result:${esc(p.id)}" onclick="setResult('${esc(p.id)}', this)">设置</button></div></td>/* demo:end */<td class="record-time" data-last-scan="${esc(time.time)}">${esc(time.label)}</td><td class="numeric" data-scan-duration="${esc(time.duration)}">${esc(time.duration)}</td><td class="scan-evidence evidence" data-evidence="${esc(p.id)}">${scanEvidence(scan)}</td><td class="record-actions">${p.can_scan === false ? `<span class="muted" tabindex="0" title="${esc(p.scan_unavailable_reason || '暂未接通 Live 扫描')}">${esc(p.scan_unavailable_reason || '暂未支持')}</span>` : `<button class="primary" data-operation="scan:${esc(p.id)}" onclick="scan('${esc(p.id)}', this)" ${scanning ? 'disabled' : ''}>立即扫描</button>`} <button type="button" data-history-product="${esc(p.id)}">查看历史</button></td></tr>`;
       }).join('');
       const showActive = document.querySelector('#alert-filter').value === 'active';
       const displayedAlerts = alerts.filter(alert => activeAlertStates.has(alert.status) === showActive);
@@ -186,6 +246,38 @@
         }, 3000);
       }
     }
+    function productCells(product, showLocation = false) {
+      const link = /^https:\/\//i.test(product.url)
+        ? `<a href="${esc(product.url)}" target="_blank" rel="noopener noreferrer">打开商品页</a>`
+        : '—';
+      return `<td class="record-key">${esc(product.platform)}</td>
+        <td class="record-key">${esc(product.store_code || '未填写')}</td>
+        <td class="record-key">${esc(product.country)}</td>
+        <td class="record-key">${esc(product.asin || '—')}</td>
+        <td class="record-key">${esc(product.sku)}</td>
+        ${showLocation ? `<td class="record-key">${esc(product.target_postal_code || '—')}</td>` : ''}
+        <td class="record-name">${esc(product.name || '—')}</td>
+        <td class="record-key">${link}</td>`;
+    }
+
+    function scanStatus(status, scan, statusId = '') {
+      const detail = [scan.error_code, scan.error_message].filter(Boolean).join('：');
+      const identity = statusId ? ` id="${esc(statusId)}"` : '';
+      return `<span${identity} class="pill ${esc(statusClass(status))}">${labels[status] || esc(status)}</span>
+        ${detail ? `<details class="fault-details"><summary aria-label="错误原因">${status === 'healthy' ? '诊断' : '详情'}</summary><span>${esc(detail)}</span></details>` : ''}`;
+    }
+
+    function scanEvidence(scan) {
+      const phrase = scan.matched_phrase ? `<div>匹配词：${esc(scan.matched_phrase)}</div>` : '';
+      const text = scan.ocr_text && scan.ocr_text !== scan.matched_phrase
+        ? `<details><summary>OCR 原文</summary>${esc(scan.ocr_text)}</details>` : '';
+      const full = scan.screenshots?.full_url
+        ? `<a href="${esc(scan.screenshots.full_url)}" target="_blank" rel="noreferrer">查看页面截图</a>` : '';
+      const roi = scan.screenshots?.roi_url
+        ? `<a href="${esc(scan.screenshots.roi_url)}" target="_blank" rel="noreferrer">查看 ROI</a>` : '';
+      return `${phrase}${text}<div>${[full, roi].filter(Boolean).join(' · ') || '<span class="muted">暂无截图</span>'}</div>`;
+    }
+
     function renderHistory() {
       const section = document.querySelector('#sku-history');
       const product = cachedProducts.find(item => item.id === historyProductId);
@@ -195,7 +287,12 @@
       const scans = cachedScans
         .filter(scan => scan.product_id === product.id)
         .sort((a, b) => Date.parse(b.started_at) - Date.parse(a.started_at));
-      document.querySelector('#scan-history').innerHTML = scans.length ? scans.map(scan => `<tr><td>${esc(new Date(scan.started_at).toLocaleString())}</td><td>${esc(productLabel(product))}</td><td><span class="pill ${statusClass(scan.status)}">${labels[scan.status] || esc(scan.status)}</span></td><td>${esc(scan.ocr_text || '—')}</td><td>${esc(scan.matched_phrase || '—')}</td><td>${esc(scan.error_code || '—')}</td><td>${scan.screenshots?.full_url ? `<a href="${esc(scan.screenshots.full_url)}" target="_blank" rel="noreferrer">Full</a>` : 'No screenshot'}${scan.screenshots?.roi_url ? ` · <a href="${esc(scan.screenshots.roi_url)}" target="_blank" rel="noreferrer">ROI</a>` : ''}</td></tr>`).join('') : '<tr><td colspan="7" class="muted">暂无扫描历史</td></tr>';
+      document.querySelector('#scan-history').innerHTML = scans.length ? scans.map(scan => `<tr>
+        ${productCells(product)}
+        <td class="record-state">${scanStatus(scan.status, scan)}</td>
+        <td class="record-time">${esc(new Date(scan.started_at).toLocaleString())}</td>
+        <td class="evidence">${scanEvidence(scan)}</td>
+      </tr>`).join('') : '<tr><td colspan="10" class="muted">暂无扫描历史</td></tr>';
     }
     document.querySelector('#products').addEventListener('click', event => {
       const button = event.target.closest('[data-history-product]');
@@ -288,6 +385,56 @@
       }
     }
     document.querySelector('#alert-filter').addEventListener('change', refreshAfterAction);
+    const entryForm = document.querySelector('#product-entry');
+    const marketOptions = __ENTRY_COUNTRIES__.map(market => `<option>${market}</option>`).join('');
+    entryForm.elements.country.innerHTML = '<option value="">请选择站点</option>' + marketOptions;
+    document.querySelector('#country-filter').insertAdjacentHTML('beforeend', marketOptions);
+
+    function switchView(view) {
+      document.querySelector('#entry-view').hidden = view !== 'entry';
+      document.querySelector('#scan-view').hidden = view !== 'scan';
+      document.querySelectorAll('[data-view]').forEach(button => {
+        button.setAttribute('aria-pressed', String(button.dataset.view === view));
+      });
+    }
+    document.querySelectorAll('[data-view]').forEach(button => button.addEventListener('click', () => switchView(button.dataset.view)));
+    let createdProduct;
+    const viewCreated = document.querySelector('#view-created-product');
+    const entryFeedback = document.querySelector('#entry-feedback');
+    entryForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      const button = event.submitter;
+      if (!beginOperation('create-product', button, '保存中…')) return;
+      viewCreated.hidden = true;
+      try {
+        const payload = Object.fromEntries(new FormData(entryForm));
+        createdProduct = await json('/api/products', {
+          method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
+        });
+        entryFeedback.textContent = '已保存 ' + createdProduct.name;
+        viewCreated.hidden = false;
+        entryForm.reset();
+      } catch (error) {
+        entryFeedback.textContent = errorMessage(error);
+        if (error.productId) {
+          createdProduct = {id: error.productId, country: entryForm.elements.country.value, sku: entryForm.elements.sku.value};
+          viewCreated.hidden = false;
+        }
+      } finally {
+        endOperation('create-product', button, '保存商品');
+      }
+    });
+    viewCreated.addEventListener('click', async () => {
+      switchView('scan');
+      document.querySelector('#country-filter').value = createdProduct.country;
+      document.querySelector('#store-filter').value = 'all';
+      document.querySelector('#status-filter').value = 'all';
+      document.querySelector('#sku-filter').value = createdProduct.sku;
+      await refreshAfterAction();
+      document.querySelector(`[data-product-id="${CSS.escape(createdProduct.id)}"]`)?.scrollIntoView();
+    });
+    document.querySelector('#store-filter').addEventListener('change', refreshAfterAction);
+    document.querySelector('#sku-filter').addEventListener('change', refreshAfterAction);
     document.querySelector('#country-filter').addEventListener('change', render);
     document.querySelector('#status-filter').addEventListener('change', render);
     render().catch(error => { document.querySelector('main').insertAdjacentHTML('afterbegin', `<div class="card">加载失败：${esc(error.message)}</div>`); });

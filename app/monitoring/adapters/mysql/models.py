@@ -12,12 +12,16 @@ class Base(DeclarativeBase):
 
 class ProductModel(Base):
     __tablename__ = "products"
-    __table_args__ = (UniqueConstraint("country", "platform", "sku", name="uq_products_market_sku"),)
+    __table_args__ = (UniqueConstraint("country", "platform", "store_code", "sku", name="uq_products_store_market_sku"),)
 
     id: Mapped[str] = mapped_column(String(120), primary_key=True)
     country: Mapped[str] = mapped_column(String(2), nullable=False)
     platform: Mapped[str] = mapped_column(String(80), nullable=False)
     sku: Mapped[str] = mapped_column(String(160), nullable=False)
+    store_code: Mapped[str] = mapped_column(String(32), nullable=False, server_default="")
+    asin: Mapped[str] = mapped_column(String(10), nullable=False, server_default="")
+    added_by: Mapped[str] = mapped_column(String(32), nullable=False, server_default="")
+    postal_code: Mapped[str] = mapped_column(String(24), nullable=False, server_default="")
     url: Mapped[str] = mapped_column(Text, nullable=False)
     page_type: Mapped[str] = mapped_column(String(80), nullable=False)
     roi_profile_id: Mapped[str] = mapped_column(String(120), nullable=False)

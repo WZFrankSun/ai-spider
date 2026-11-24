@@ -30,52 +30,43 @@ class RealObservationFactory:
         product: Product,
         page: object | None,
         roi_bytes: bytes,
+        *,
+        dom_evidence: tuple[bool | None, object | None] | None = None,
     ) -> ScanObservation:
         started_at = datetime.now(timezone.utc)
         cookies = await _cookie_summary(page)
-        dom_state = await _dom_add_to_cart_state(page)
-        if dom_state is True:
-            ocr_error_status = ProductScanStatus.HEALTHY
-        elif dom_state is False:
-            ocr_error_status = ProductScanStatus.INVENTORY_RISK
-        else:
-            ocr_error_status = ProductScanStatus.TECHNICAL_FAILURE
+        dom_state = dom_evidence[0] if dom_evidence is not None else await _dom_add_to_cart_state(page)
         try:
             result = await self.ocr.recognize(ImageRegion(roi_bytes))
         except Exception as exc:
-            return _ocr_diagnostic(getattr(exc, "code", "OCR_FAILED"), str(exc), started_at, cookies, ocr_error_status)
+            return _ocr_diagnostic(getattr(exc, "code", "OCR_FAILED"), str(exc), started_at, cookies)
 
         try:
             phrases = self.phrase_sets.load(product.country, product.platform, product.page_type)
             match = match_add_to_cart(result.text, phrases)
-            if page is None:
-                unavailable_phrases = self.phrase_sets.load(
-                    product.country, product.platform, product.page_type, unavailable=True
-                )
-                unavailable = match_add_to_cart(result.text, unavailable_phrases).matched
+            unavailable_phrases = self.phrase_sets.load(
+                product.country, product.platform, product.page_type, unavailable=True
+            )
+            unavailable = match_add_to_cart(result.text, unavailable_phrases).matched
         except Exception as exc:
-            return _ocr_diagnostic("PHRASE_SET_LOAD_FAILED", str(exc), started_at, cookies, ocr_error_status)
+            return _ocr_diagnostic("PHRASE_SET_LOAD_FAILED", str(exc), started_at, cookies)
 
-        status = ocr_error_status
+        status = ProductScanStatus.TECHNICAL_FAILURE
         error_code = None
         error_message = None
-        if dom_state is True and not match.matched:
+        if dom_state is True and match.matched:
+            status = ProductScanStatus.HEALTHY
+        elif dom_state is True or (dom_state is False and match.matched):
             error_code = "DOM_OCR_MISMATCH"
-            error_message = "add-to-cart button is usable but OCR did not match configured phrases"
-        elif dom_state is False and match.matched:
-            error_code = "DOM_OCR_MISMATCH"
-            error_message = "OCR matched add-to-cart text but the product has no usable add-to-cart button"
-        elif page is None:
-            if unavailable and not match.matched:
-                status = ProductScanStatus.INVENTORY_RISK
-            elif match.matched and not unavailable:
-                status = ProductScanStatus.HEALTHY
-            else:
-                error_code = "OCR_AVAILABILITY_CONFLICT" if unavailable else "OCR_AVAILABILITY_UNVERIFIED"
-                error_message = "OCR did not provide an unambiguous availability signal"
-        elif dom_state is None:
+            error_message = "DOM button availability and OCR add-to-cart evidence disagree"
+        elif page is not None and dom_state is None:
             error_code = "DOM_BUTTON_UNVERIFIED"
             error_message = "could not confirm whether the add-to-cart button is usable"
+        elif unavailable and not match.matched:
+            status = ProductScanStatus.INVENTORY_RISK
+        else:
+            error_code = "OCR_AVAILABILITY_CONFLICT" if unavailable else "OCR_AVAILABILITY_UNVERIFIED"
+            error_message = "OCR did not provide unambiguous unavailability evidence"
 
         finished_at = datetime.now(timezone.utc)
         return ScanObservation(
@@ -138,10 +129,9 @@ def _ocr_diagnostic(
     message: str,
     started_at: datetime,
     cookies: list[dict],
-    status: ProductScanStatus,
 ) -> ScanObservation:
     return ScanObservation(
-        status=status,
+        status=ProductScanStatus.TECHNICAL_FAILURE,
         error_code=code,
         error_message=message,
         started_at=started_at,

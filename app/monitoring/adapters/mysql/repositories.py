@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from sqlalchemy import desc, select
+from sqlalchemy.exc import IntegrityError
+from app.monitoring.application.ports import DuplicateProductError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.monitoring.domain.models import (
@@ -32,6 +34,17 @@ class SqlAlchemyProductRepository:
                 select(ProductModel).where(ProductModel.enabled.is_(True)).order_by(ProductModel.id)
             )
             return [_to_product(record) for record in result.scalars()]
+
+    async def create(self, product: Product) -> None:
+        try:
+            async with self.session_factory() as session, session.begin():
+                session.add(_product_record(product, None, datetime.now(timezone.utc)))
+        except IntegrityError as exc:
+            if "uq_products_store_market_sku" in str(exc.orig) or (
+                "UNIQUE constraint failed" in str(exc.orig) and "products.store_code" in str(exc.orig)
+            ):
+                raise DuplicateProductError("该店铺与站点已存在此 SKU") from exc
+            raise
 
     async def save(self, product: Product) -> None:
         now = datetime.now(timezone.utc)
@@ -123,6 +136,10 @@ def _product_record(product: Product, existing: ProductModel | None, now: dateti
         country=product.country,
         platform=product.platform,
         sku=product.sku,
+        store_code=product.store_code,
+        asin=product.asin,
+        added_by=product.added_by,
+        postal_code=product.postal_code,
         url=product.url,
         page_type=product.page_type,
         roi_profile_id=product.roi_profile_id,
@@ -173,6 +190,10 @@ def _to_product(record: ProductModel) -> Product:
         country=record.country,
         platform=record.platform,
         sku=record.sku,
+        store_code=record.store_code,
+        asin=record.asin,
+        added_by=record.added_by,
+        postal_code=record.postal_code,
         url=record.url,
         page_type=record.page_type,
         roi_profile_id=record.roi_profile_id,

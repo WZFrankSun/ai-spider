@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.monitoring.application.ports import DuplicateProductError
 from app.monitoring.domain.models import Alert, AlertStatus, AlertType, Product, Scan
 
 
@@ -12,6 +13,13 @@ class MemoryProductRepository:
 
     async def list_enabled(self) -> list[Product]:
         return [product for product in self._products.values() if product.enabled]
+
+    async def create(self, product: Product) -> None:
+        identity = (product.country, product.platform, product.store_code, product.sku.casefold())
+        for existing in self._products.values():
+            if (existing.country, existing.platform, existing.store_code, existing.sku.casefold()) == identity:
+                raise DuplicateProductError("该店铺与站点已存在此 SKU")
+        await self.save(product)
 
     async def save(self, product: Product) -> None:
         self._products[product.id] = product

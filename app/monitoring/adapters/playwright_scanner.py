@@ -2,35 +2,27 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import re
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Awaitable, Callable
 from urllib.parse import urlsplit
 
-from playwright.async_api import Error as PlaywrightError
+from playwright.async_api import Error as PlaywrightError, expect
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from app.browser.browser_manager import BrowserManager
-from app.monitoring.adapters.roi import RoiCropper, RoiError
+from app.monitoring.adapters.roi import RoiCropper, RoiError, has_image_content
 from app.monitoring.adapters.ocr_tesseract import OcrError
 from app.monitoring.application.ports import ArtifactMetadata, ArtifactStore
-from app.monitoring.application.real_observation import find_usable_add_to_cart_button
+from app.monitoring.application.real_observation import RealObservationFactory, find_usable_add_to_cart_button
+from app.monitoring.config.markets import AMAZON_LOCALES, resolve_target_postal_code
 from app.monitoring.domain.models import Product, ProductScanStatus, ScanObservation
 from app.platforms.registry import PlatformRegistry
 
 
-_DEFAULT_POSTAL_CODES = {
-    "DE": "10115",
-    "IT": "00174",
-    "FR": "75001",
-    "ES": "28001",
-    "GB": "SW1A 1AA",
-    "NL": "1012",
-    "SE": "111 22",
-    "BE": "1049",
-    "PL": "00-001",
-}
+
 
 
 class ScanErrorCode(str, Enum):
@@ -43,9 +35,12 @@ class ScanErrorCode(str, Enum):
     READY_SELECTOR_MISSING = "READY_SELECTOR_MISSING"
     READY_SELECTOR_FAILED = "READY_SELECTOR_FAILED"
     SCREENSHOT_FAILED = "SCREENSHOT_FAILED"
+    SCREENSHOT_BLANK = "SCREENSHOT_BLANK"
+    ROI_BLANK = "ROI_BLANK"
     ARTIFACT_SAVE_FAILED = "ARTIFACT_SAVE_FAILED"
     ROI_FAILED = "ROI_FAILED"
     OCR_NOT_CONFIGURED = "OCR_NOT_CONFIGURED"
+    POSTAL_CODE_REQUIRED = "POSTAL_CODE_REQUIRED"
     DELIVERY_REGION_UNVERIFIED = "DELIVERY_REGION_UNVERIFIED"
     OBSERVATION_BUILD_FAILED = "OBSERVATION_BUILD_FAILED"
     UNEXPECTED_SCAN_ERROR = "UNEXPECTED_SCAN_ERROR"
@@ -74,7 +69,6 @@ class PlaywrightScanner:
         roi_cropper: RoiCropper | None = None,
         timeout_ms: int = 30_000,
         delivery_diagnostic_root: str | Path = "output/delivery-diagnostics",
-        delivery_validation_exempt_ids: set[str] | None = None,
         delivery_timeout_ms: int = 20_000,
     ):
         self.browser_manager = browser_manager or BrowserManager()
@@ -85,12 +79,14 @@ class PlaywrightScanner:
         self.roi_cropper = roi_cropper or RoiCropper()
         self.timeout_ms = timeout_ms
         self.delivery_diagnostic_root = Path(delivery_diagnostic_root)
-        self.delivery_validation_exempt_ids = delivery_validation_exempt_ids or set()
         self.delivery_timeout_ms = delivery_timeout_ms
 
     async def scan(self, product: Product) -> ScanObservation:
         started_at = datetime.now(timezone.utc)
         session = None
+        requires_delivery = product.platform == "amazon"
+        if requires_delivery and not self._resolve_postal_code(product):
+            return self._failure(ScanErrorCode.POSTAL_CODE_REQUIRED, "postal_code is required", started_at)
 
         try:
             try:
@@ -114,7 +110,7 @@ class PlaywrightScanner:
             try:
                 session = await self.browser_manager.create_session(
                     viewport=profile.browser.get("viewport"),
-                    locale=profile.browser.get("locale") or _locale_for(product.country),
+                    locale=AMAZON_LOCALES[product.country.upper()] if requires_delivery and product.country.upper() in AMAZON_LOCALES else profile.browser.get("locale", "en-US"),
                 )
             except Exception as exc:
                 return self._failure(
@@ -174,12 +170,6 @@ class PlaywrightScanner:
                     full_screenshot_path=evidence,
                 )
 
-            # Delivery setup is best-effort: a failed postal-code setup must not
-            # turn the whole scan into a technical failure, because the
-            # add-to-cart judgement relies on the DOM button and OCR, not on the
-            # delivery region. Diagnostics are kept for manual review.
-            delivery_error = ""
-
             try:
                 selectors = profile.resolve_ready_selectors(product.url)
             except Exception as exc:
@@ -225,7 +215,7 @@ class PlaywrightScanner:
 
             # The delivery dialog can be slow or stuck. Bound it so a blocked
             # postal-code setup cannot stall the whole scan.
-            if self._should_configure_delivery(product):
+            if requires_delivery:
                 try:
                     delivery_error = await asyncio.wait_for(
                         self._configure_delivery(page, profile, product),
@@ -237,73 +227,80 @@ class PlaywrightScanner:
                     )
                 except Exception as exc:
                     delivery_error = f"delivery setup failed: {type(exc).__name__}: {exc}"
-                # 无论成功与否都要收掉弹窗，否则残留弹窗会遮挡加购按钮。
-                await self._close_delivery_dialog(page)
+                if delivery_error:
+                    await self._close_delivery_dialog(page)
+                    evidence = await self._capture_ready_failure(page, product, started_at)
+                    return self._failure(
+                        ScanErrorCode.DELIVERY_REGION_UNVERIFIED, delivery_error, started_at,
+                        full_screenshot_path=evidence,
+                    )
 
-            try:
-                screenshot = await page.screenshot(full_page=True)
-            except Exception as exc:
-                return self._failure(
-                    ScanErrorCode.SCREENSHOT_FAILED,
-                    str(exc),
-                    started_at,
-                )
+            screenshot = None
+            observation_image = None
+            dom_evidence = None
+            evidence_error = None
+            for attempt in range(2):
+                if requires_delivery or attempt:
+                    try:
+                        for selector in selectors:
+                            await page.wait_for_selector(
+                                selector, state="visible", timeout=min(self.timeout_ms, 10_000)
+                            )
+                    except (PlaywrightTimeoutError, TimeoutError) as exc:
+                        evidence = await self._capture_ready_failure(page, product, started_at)
+                        return self._failure(
+                            ScanErrorCode.READY_SELECTOR_MISSING,
+                            f"product page not ready before evidence capture: {exc}",
+                            started_at, full_screenshot_path=evidence,
+                        )
+
+                try:
+                    dom_evidence = await find_usable_add_to_cart_button(page)
+                    screenshot = await page.screenshot(full_page=True)
+                except Exception as exc:
+                    return self._failure(ScanErrorCode.SCREENSHOT_FAILED, str(exc), started_at)
+
+                observation_image = None
+                if not has_image_content(screenshot, below_header=True):
+                    evidence_error = (ScanErrorCode.SCREENSHOT_BLANK, "product screenshot is blank below the header")
+                    continue
+
+                if self.roi_profile_loader is not None:
+                    try:
+                        roi_profile = self.roi_profile_loader.load(product.roi_profile_id)
+                        if inspect.isawaitable(roi_profile):
+                            roi_profile = await roi_profile
+                        observation_image = await self._crop_product_roi(
+                            product, page, screenshot, roi_profile, dom_evidence=dom_evidence
+                        )
+                    except Exception as exc:
+                        evidence_error = (ScanErrorCode.ROI_FAILED, str(exc))
+                        continue
+                    if not has_image_content(observation_image):
+                        evidence_error = (ScanErrorCode.ROI_BLANK, "product ROI is blank")
+                        continue
+                evidence_error = None
+                break
 
             full_artifact_path = None
             roi_artifact_path = None
-            observation_image = screenshot
             if self.artifact_store is not None:
                 try:
-                    full_ref = await self.artifact_store.save(
-                        screenshot,
-                        ArtifactMetadata(
-                            country=product.country,
-                            platform=product.platform,
-                            sku=product.sku,
-                            artifact_type="full",
-                            captured_at=started_at,
-                        ),
-                    )
-                    full_artifact_path = full_ref.path
+                    full_artifact_path = await self._save_evidence(screenshot, product, started_at, "full")
+                    if observation_image is not None:
+                        roi_artifact_path = await self._save_evidence(observation_image, product, started_at, "roi")
                 except Exception as exc:
                     return self._failure(
-                        ScanErrorCode.ARTIFACT_SAVE_FAILED,
-                        str(exc),
-                        started_at,
+                        ScanErrorCode.ARTIFACT_SAVE_FAILED, str(exc), started_at,
+                        full_screenshot_path=full_artifact_path,
                     )
 
-            if self.roi_profile_loader is not None:
-                try:
-                    profile = self.roi_profile_loader.load(product.roi_profile_id)
-                    if inspect.isawaitable(profile):
-                        profile = await profile
-                    observation_image = await self._crop_product_roi(product, page, screenshot, profile)
-                    if self.artifact_store is not None:
-                        roi_ref = await self.artifact_store.save(
-                            observation_image,
-                            ArtifactMetadata(
-                                country=product.country,
-                                platform=product.platform,
-                                sku=product.sku,
-                                artifact_type="roi",
-                                captured_at=started_at,
-                            ),
-                        )
-                        roi_artifact_path = roi_ref.path
-                except (RoiError, OSError, ValueError) as exc:
-                    return self._failure(
-                        ScanErrorCode.ROI_FAILED,
-                        str(exc),
-                        started_at,
-                        full_screenshot_path=full_artifact_path,
-                    )
-                except Exception as exc:
-                    return self._failure(
-                        ScanErrorCode.ROI_FAILED,
-                        str(exc),
-                        started_at,
-                        full_screenshot_path=full_artifact_path,
-                    )
+            if evidence_error is not None:
+                code, message = evidence_error
+                return self._failure(
+                    code, message, started_at,
+                    full_screenshot_path=full_artifact_path, roi_screenshot_path=roi_artifact_path,
+                )
 
             if self.observation_factory is None:
                 return self._failure(
@@ -315,7 +312,11 @@ class PlaywrightScanner:
                 )
 
             try:
-                observation = self.observation_factory(product, page, observation_image)
+                image = observation_image if observation_image is not None else screenshot
+                if isinstance(self.observation_factory, RealObservationFactory):
+                    observation = self.observation_factory(product, page, image, dom_evidence=dom_evidence)
+                else:
+                    observation = self.observation_factory(product, page, image)
                 if inspect.isawaitable(observation):
                     observation = await observation
                 if not isinstance(observation, ScanObservation):
@@ -343,9 +344,6 @@ class PlaywrightScanner:
                 full_screenshot_path=full_artifact_path,
                 roi_screenshot_path=roi_artifact_path,
             )
-            if delivery_error:
-                observation.error_code = observation.error_code or ScanErrorCode.DELIVERY_REGION_UNVERIFIED.value
-                observation.error_message = _join_diagnostics(observation.error_message, delivery_error)
             return observation
         except Exception as exc:
             return self._failure(
@@ -363,15 +361,21 @@ class PlaywrightScanner:
                         # A cleanup error must not hide the scan observation.
                         pass
 
-    async def _crop_product_roi(self, product, page, screenshot, profile):
+    async def _save_evidence(self, image, product, started_at, kind):
+        reference = await self.artifact_store.save(image, ArtifactMetadata(
+            country=product.country, platform=product.platform, sku=product.sku,
+            artifact_type=kind, captured_at=started_at,
+        ))
+        return reference.path
+
+    async def _crop_product_roi(self, product, page, screenshot, profile, *, dom_evidence=None):
         if product.platform == "amazon":
-            _, button = await find_usable_add_to_cart_button(page)
+            _, button = dom_evidence if dom_evidence is not None else await find_usable_add_to_cart_button(page)
             if button is not None:
                 try:
                     return await button.screenshot(timeout=min(self.timeout_ms, 3_000))
-                except PlaywrightError:
-                    # The button may disappear after the page updates.
-                    pass
+                except PlaywrightError as exc:
+                    raise RoiError("validated add-to-cart button could not be captured") from exc
         return await self.roi_cropper.crop(screenshot, profile, page=page)
 
     async def _click_continue_shopping(self, page, selectors: list[str]) -> None:
@@ -430,43 +434,15 @@ class PlaywrightScanner:
             # Screenshot failure must not mask the original page validation error.
             return None
 
-    def _should_configure_delivery(self, product) -> bool:
-        """配送校验只在显式要求且能取到邮编时执行。"""
-        if not getattr(product, "delivery_validation_required", True):
-            return False
-        if product.id in self.delivery_validation_exempt_ids:
-            return False
-        return bool(self._resolve_postal_code(product))
-
-    def _resolve_postal_code(self, product) -> str:
-        """邮编优先级：商品自定义 > 国家默认 > 平台配置（限同国家）。
-
-        平台 YAML 里的 postal_code 通常只对配置的国家有效，例如 amazon.yaml
-        里的 10115 属于德国，意大利或法国商品必须用各自的邮编。
-        """
-        override = str(getattr(product, "postal_code", "") or "").strip()
-        if override:
-            return override
-        country = product.country.upper()
-        default = _DEFAULT_POSTAL_CODES.get(country, "")
-        if default:
-            return default
-        try:
-            profile = self.platform_registry.load(product.platform)
-        except Exception:
-            return ""
-        delivery = getattr(profile, "delivery", {}) or {}
-        configured_country = str(delivery.get("country", "") or "").strip().upper()
-        if configured_country and configured_country != country:
-            return ""
-        return str(delivery.get("postal_code", "") or "").strip()
+    @staticmethod
+    def _resolve_postal_code(product: Product) -> str:
+        return resolve_target_postal_code(product.country)
 
     async def _configure_delivery(self, page, profile, product) -> str | None:
-        delivery = getattr(profile, "delivery", {})
         location = getattr(profile, "location", {})
         postal_code = self._resolve_postal_code(product)
         if not postal_code:
-            return None
+            return "postal_code is required"
         diagnostic_dir = self.delivery_diagnostic_root / product.country / product.platform / product.id
         diagnostic_dir.mkdir(parents=True, exist_ok=True)
         details = {"delivery_text_before": "", "postal_input_found": False, "postal_input_value": "", "submit_succeeded": False, "confirm_button_found": False, "delivery_text_after": "", "stage": "start"}
@@ -498,6 +474,8 @@ class PlaywrightScanner:
                 pass
             await field.type(postal_code, delay=60, timeout=8000)
             details["postal_input_value"] = await field.input_value()
+            if details["postal_input_value"].strip().upper() != postal_code.upper():
+                return self._delivery_error(details, diagnostic_dir, "postal input differs from requested value")
             details["stage"] = "click submit"
             submit = page.locator(location.get("submit", "#GLUXZipUpdate .a-button-input")).first
             if not await submit.count() or not await submit.is_visible():
@@ -528,14 +506,17 @@ class PlaywrightScanner:
             elif not details["submit_succeeded"]:
                 await self._close_delivery_dialog(page)
                 return self._delivery_error(details, diagnostic_dir, "delivery submit control not found")
-            await page.wait_for_timeout(2000)
-            await page.screenshot(path=str(diagnostic_dir / "delivery_after_submit.png"), full_page=False)
+            await self._close_delivery_dialog(page)
+            pattern = r"(?<![A-Z0-9])" + r"\s+".join(map(re.escape, postal_code.split())) + r"(?![A-Z0-9])"
+            expected_postal = re.compile(pattern, re.IGNORECASE)
             try:
-                await result.wait_for(state="visible", timeout=8000)
-                details["delivery_text_after"] = (await result.inner_text()).strip()
-            except Exception:
-                details["delivery_text_after"] = ""
-            if postal_code not in details["delivery_text_after"]:
+                await expect(result).to_be_visible(timeout=min(self.timeout_ms, 5_000))
+                await expect(result).to_have_text(expected_postal, timeout=min(self.timeout_ms, 5_000))
+            except AssertionError:
+                pass
+            details["delivery_text_after"] = (await result.inner_text(timeout=2_000)).strip() if await result.count() else ""
+            await page.screenshot(path=str(diagnostic_dir / "delivery_after_submit.png"), full_page=False)
+            if not await result.is_visible() or not expected_postal.search(details["delivery_text_after"]):
                 return self._delivery_error(details, diagnostic_dir, "requested delivery postal code not observed")
             return None
         except Exception as exc:
@@ -595,7 +576,7 @@ class PlaywrightScanner:
                 (await item.get_attribute(name) or "")
                 for name in ("id", "name", "placeholder", "aria-label", "autocomplete")
             ).lower()
-            if any(term in haystack for term in ("postal", "postcode", "postleitzahl", "plz", "zip")):
+            if any(term in haystack for term in ("postal", "postcode", "postleitzahl", "plz", "zip", "postnummer", "codice postale", "kod pocztowy")):
                 return item
 
         # 结构性兜底：弹窗内第一个可见的文本输入框。
@@ -623,7 +604,7 @@ class PlaywrightScanner:
         for index in range(await buttons.count()):
             item = buttons.nth(index)
             text = ((await item.inner_text()) + " " + (await item.get_attribute("aria-label") or "")).lower()
-            if any(term in text for term in ("apply", "submit", "weiter", "bestätigen", "confirm", "speichern")):
+            if any(term in text for term in ("apply", "submit", "weiter", "bestätigen", "confirm", "speichern", "toepassen", "appliquer", "applica", "aplicar", "använd", "zastosuj")):
                 return item
         return page.locator("#__delivery_submit_not_found__")
 
@@ -641,6 +622,11 @@ class PlaywrightScanner:
             "button:has-text('Done')",
             "button:has-text('Appliquer')",
             "button:has-text('Applica')",
+            "button:text-is('Gereed')",
+            "button:text-is('Terminé')",
+            "button:text-is('Listo')",
+            "button:text-is('Klar')",
+            "button:text-is('Gotowe')",
         ):
             try:
                 candidates = page.locator(selector)
@@ -685,13 +671,3 @@ class PlaywrightScanner:
             full_screenshot_path=full_screenshot_path,
             roi_screenshot_path=roi_screenshot_path,
         )
-
-
-def _locale_for(country: str) -> str:
-    return {"DE": "de-DE", "IT": "it-IT"}.get(country.upper(), "en-US")
-
-
-def _join_diagnostics(existing: str | None, addition: str) -> str:
-    if not existing:
-        return addition
-    return f"{existing}; {addition}"

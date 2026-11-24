@@ -6,6 +6,7 @@ from typing import Protocol
 
 from pydantic import ValidationError
 
+from app.monitoring.config.markets import ENTRY_COUNTRIES
 from app.monitoring.config.catalog_schema import CatalogProductRecord
 from app.monitoring.domain.models import Product
 
@@ -20,7 +21,7 @@ class ProductCatalogLoader(Protocol):
 
 
 class JsonProductCatalogLoader:
-    allowed_countries = frozenset({"DE", "IT", "FR", "GB"})
+    allowed_countries = frozenset(ENTRY_COUNTRIES)
 
     def load(self, path: str) -> list[Product]:
         source = Path(path)

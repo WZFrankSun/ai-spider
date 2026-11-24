@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
+import json
 from pathlib import Path
+from uuid import uuid4
 from typing import Any, Callable
 
 from fastapi import FastAPI, HTTPException
@@ -25,7 +27,10 @@ from app.monitoring.domain.models import (
 )
 from app.monitoring.runtime_config import MonitoringRuntimeConfig, load_monitoring_config, monitoring_status
 
-from .schemas import DemoResultRequest
+from .schemas import DemoResultRequest, ProductEntryRequest, amazon_asin
+from app.monitoring.application.ports import DuplicateProductError
+from app.monitoring.domain.policies import supports_live_scan
+from app.monitoring.config.markets import ENTRY_COUNTRIES, resolve_target_postal_code
 
 
 @dataclass
@@ -94,7 +99,7 @@ def create_monitoring_app(
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
         template = Path(__file__).resolve().parents[1] / "templates" / "index.html"
-        html = template.read_text(encoding="utf-8")
+        html = template.read_text(encoding="utf-8").replace("__ENTRY_COUNTRIES__", json.dumps(ENTRY_COUNTRIES))
         return re.sub(
             r"(?:<!--|/\*) demo:start (?:-->|\*/)(.*?)(?:<!--|/\*) demo:end (?:-->|\*/)",
             lambda block: block[1] if state.mode == "demo" else "",
@@ -123,11 +128,44 @@ def create_monitoring_app(
     async def products() -> list[dict]:
         products = []
         for product in await state.products.list_enabled():
-            payload = _product_json(product)
+            payload = _product_json(product, demo=state.mode == "demo")
             if payload["status"] == "scanning" and not state.scan_product.coordinator.is_active(product.id):
                 payload["status"] = "technical_failure"
             products.append(payload)
         return products
+
+    @app.post("/api/products", status_code=201)
+    async def create_product(request: ProductEntryRequest) -> dict:
+        if state.mode != "real":
+            raise HTTPException(404, "商品录入仅在真实模式可用")
+        product = Product(
+            id=uuid4().hex,
+            page_type="product_detail",
+            roi_profile_id=(
+                f"amazon_product_detail_{request.country.lower()}_buy_box"
+                if request.platform == "amazon" else ""
+            ),
+            **request.model_dump(),
+        )
+        try:
+            await state.products.create(product)
+        except DuplicateProductError as exc:
+            identity = (product.country, product.platform, product.store_code, product.sku.casefold())
+            existing = next((
+                row for row in await state.products.list_enabled()
+                if (row.country, row.platform, row.store_code, row.sku.casefold()) == identity
+            ), None)
+            raise HTTPException(409, {
+                "message": str(exc),
+                "product_id": existing.id if existing else None,
+            }) from exc
+        return _product_json(product)
+
+    async def ensure_scan_supported(product_id: str) -> None:
+        if state.mode == "real":
+            product = await state.products.get(product_id)
+            if product is not None and not supports_live_scan(product):
+                raise HTTPException(409, "此平台或站点暂未支持扫描")
 
     @app.get("/api/scans")
     async def scans() -> list[dict]:
@@ -159,6 +197,7 @@ def create_monitoring_app(
 
     @app.post("/api/products/{product_id}/scan")
     async def scan(product_id: str) -> dict:
+        await ensure_scan_supported(product_id)
         try:
             result = await state.scan_product.execute(product_id)
         except KeyError as error:
@@ -186,6 +225,9 @@ def create_monitoring_app(
 
     @app.post("/api/alerts/{alert_id}/verify")
     async def verify(alert_id: str) -> dict:
+        alert = await state.alerts.get(alert_id)
+        if alert is not None:
+            await ensure_scan_supported(alert.product_id)
         if state.demo_auto_recover:
             demo_alert = await state.alerts.get(alert_id)
             if demo_alert is not None:
@@ -244,12 +286,28 @@ def awaitable_products(repository: MemoryProductRepository) -> list[Product]:
     return list(repository._products.values())
 
 
-def _product_json(product: Product) -> dict:
+def _product_json(product: Product, *, demo: bool = False) -> dict:
+    can_scan = demo or supports_live_scan(product)
+    reason = None
+    if not can_scan:
+        reason = (
+            f"Amazon {product.country} 站未配置 Live 扫描"
+            if product.platform == "amazon" else f"{product.platform} 暂未接通 Live 扫描"
+        )
     return {
         "id": product.id,
         "country": product.country,
         "platform": product.platform,
         "sku": product.sku,
+        "asin": product.asin or (amazon_asin(product.url) if product.platform == "amazon" else ""),
+        "store_code": product.store_code,
+        "postal_code": resolve_target_postal_code(product.country) if product.platform == "amazon" else "",
+        "added_by": product.added_by,
+        "can_scan": can_scan,
+        "scan_unavailable_reason": reason,
+        "target_postal_code": (
+            resolve_target_postal_code(product.country) if product.platform == "amazon" else ""
+        ),
         "name": product.name,
         "url": product.url,
         "page_type": product.page_type,

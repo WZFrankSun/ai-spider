@@ -83,7 +83,6 @@ def build_monitoring_container(config: MonitoringRuntimeConfig) -> MonitoringCon
             artifact_store=artifact_store,
             roi_profile_loader=roi_loader,
             timeout_ms=int(config.scan_timeout_seconds * 1000),
-            delivery_validation_exempt_ids={p.id for p in catalog_products if not p.delivery_validation_required},
         )
 
     container = MonitoringContainer.from_dependencies(

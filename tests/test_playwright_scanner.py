@@ -1,4 +1,8 @@
+import io
 import unittest
+from unittest.mock import AsyncMock
+
+from PIL import Image, ImageDraw
 from datetime import datetime
 
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
@@ -21,8 +25,17 @@ def product() -> Product:
         url="https://example.test/product",
         page_type="product_detail",
         roi_profile_id="default",
-        delivery_validation_required=False,
     )
+
+
+def evidence_png(*, blank=False, header_only=False):
+    image = Image.new("RGB", (200, 120), "white")
+    if not blank:
+        top = 0 if header_only else 35
+        ImageDraw.Draw(image).rectangle((20, top, 160, top + 16), fill="black")
+    out = io.BytesIO()
+    image.save(out, format="PNG")
+    return out.getvalue()
 
 
 class FakePage:
@@ -48,7 +61,7 @@ class FakePage:
         self.screenshot_calls += 1
         if self.screenshot_error:
             raise self.screenshot_error
-        return b"fake-png"
+        return evidence_png()
 
     async def title(self):
         return "Example product"
@@ -103,7 +116,7 @@ class FakeRoiProfileLoader:
 
 class FakeRoiCropper:
     async def crop(self, screenshot, profile, page=None):
-        return b"fake-roi"
+        return evidence_png()
 
 
 class FakeProfile:
@@ -137,6 +150,7 @@ class PlaywrightScannerTests(unittest.IsolatedAsyncioTestCase):
             observation_factory=observation_factory,
             timeout_ms=1234,
         )
+        scanner._configure_delivery = AsyncMock(return_value=None)
         return scanner, manager
 
     async def test_successful_page_scan_returns_observation_and_closes_session(self):
@@ -179,7 +193,7 @@ class PlaywrightScannerTests(unittest.IsolatedAsyncioTestCase):
         observation = await scanner.scan(product())
 
         self.assertEqual(observation.status, ProductScanStatus.HEALTHY)
-        page.locator.assert_called_once_with(selector)
+        page.locator.assert_any_call(selector)
 
     def test_amazon_continue_selectors_cover_italian_alternate_label(self):
         from app.platforms.registry import PlatformRegistry
@@ -209,7 +223,7 @@ class PlaywrightScannerTests(unittest.IsolatedAsyncioTestCase):
         result = await scanner.scan(current_product)
 
         self.assertEqual(result.status, ProductScanStatus.HEALTHY)
-        page.locator.assert_called_with("#sp-cc-rejectall-link")
+        page.locator.assert_any_call("#sp-cc-rejectall-link")
         reject.click.assert_awaited_once()
         self.assertEqual([url for url, _ in page.goto_calls], [current_product.url] * 2)
 
@@ -300,6 +314,60 @@ class PlaywrightScannerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(observation.full_screenshot_path, "/tmp/full-1.png")
         self.assertEqual(page.screenshot_calls, 1)
 
+    async def test_rechecks_visible_title_and_recaptures_header_only_page(self):
+        from unittest.mock import AsyncMock
+
+        page = FakePage()
+        page.screenshot = AsyncMock(side_effect=[evidence_png(header_only=True), evidence_png()])
+        scanner, _ = self.build(page)
+        scanner._configure_delivery = AsyncMock(return_value=None)
+
+        current = product()
+        current.delivery_validation_required = True
+        observation = await scanner.scan(current)
+
+        self.assertEqual(observation.status, ProductScanStatus.HEALTHY)
+        self.assertEqual(page.screenshot.await_count, 2)
+        self.assertEqual([options["state"] for _, options in page.waited_selectors],
+                         ["attached", "visible", "visible"])
+
+    async def test_header_only_page_twice_is_technical_failure(self):
+        from unittest.mock import AsyncMock
+
+        page = FakePage()
+        page.screenshot = AsyncMock(return_value=evidence_png(header_only=True))
+        factory = AsyncMock()
+        scanner, _ = self.build(page, observation_factory=factory)
+        scanner.artifact_store = RecordingArtifactStore()
+
+        observation = await scanner.scan(product())
+
+        self.assertEqual(observation.error_code, ScanErrorCode.SCREENSHOT_BLANK)
+        self.assertEqual(observation.status, ProductScanStatus.TECHNICAL_FAILURE)
+        self.assertIsNotNone(observation.full_screenshot_path)
+        self.assertEqual(page.screenshot.await_count, 2)
+        factory.assert_not_called()
+
+    async def test_blank_roi_after_two_attempts_never_runs_ocr(self):
+        from unittest.mock import AsyncMock
+
+        page = FakePage()
+        factory = AsyncMock()
+        scanner, _ = self.build(page, observation_factory=factory)
+        scanner._configure_delivery = AsyncMock(return_value=None)
+        scanner.roi_profile_loader = FakeRoiProfileLoader()
+        scanner.roi_cropper = FakeRoiCropper()
+        scanner.roi_cropper.crop = AsyncMock(return_value=evidence_png(blank=True))
+        scanner.artifact_store = RecordingArtifactStore()
+
+        observation = await scanner.scan(product())
+
+        self.assertEqual(observation.error_code, ScanErrorCode.ROI_BLANK)
+        self.assertEqual(observation.status, ProductScanStatus.TECHNICAL_FAILURE)
+        self.assertEqual(scanner.roi_cropper.crop.await_count, 2)
+        self.assertIsNotNone(observation.roi_screenshot_path)
+        factory.assert_not_called()
+
     async def test_screenshot_failure_maps_to_technical_failure(self):
         scanner, _ = self.build(FakePage(screenshot_error=OSError("disk full")))
 
@@ -346,10 +414,11 @@ class PlaywrightScannerTests(unittest.IsolatedAsyncioTestCase):
             roi_cropper=FakeRoiCropper(),
         )
 
+        scanner._configure_delivery = AsyncMock(return_value=None)
         observation = await scanner.scan(product())
 
         self.assertEqual(observation.status, ProductScanStatus.HEALTHY)
-        self.assertEqual(received, [b"fake-roi"])
+        self.assertEqual(received, [evidence_png()])
         self.assertEqual([item[1].artifact_type for item in artifact_store.saved], ["full", "roi"])
         self.assertEqual(observation.full_screenshot_path, "/tmp/full-1.png")
         self.assertEqual(observation.roi_screenshot_path, "/tmp/roi-1.png")
@@ -357,7 +426,7 @@ class PlaywrightScannerTests(unittest.IsolatedAsyncioTestCase):
 
 
 class DeliverySetupTests(unittest.IsolatedAsyncioTestCase):
-    """配送邮编设置属于尽力而为，失败不能把整次扫描变成技术故障。"""
+    """配送邮编校验失败必须在扫描商品之前停止。"""
 
     def build(self, page, *, postal_code="10115", delivery_timeout_ms=20000):
         manager = FakeBrowserManager(page)
@@ -386,10 +455,10 @@ class DeliverySetupTests(unittest.IsolatedAsyncioTestCase):
         fields.update(kwargs)
         return Product(**fields)
 
-    def test_postal_code_prefers_product_override(self):
+    def test_postal_code_ignores_legacy_product_override(self):
         scanner = self.build(FakePage())
         current = self.delivery_product(postal_code="10117")
-        self.assertEqual(scanner._resolve_postal_code(current), "10117")
+        self.assertEqual(scanner._resolve_postal_code(current), "10115")
 
     def test_postal_code_falls_back_to_country_default(self):
         scanner = self.build(FakePage())
@@ -402,12 +471,21 @@ class DeliverySetupTests(unittest.IsolatedAsyncioTestCase):
         # amazon.yaml 配置的是德国邮编 10115，法国商品不能沿用
         self.assertEqual(scanner._resolve_postal_code(current), "75001")
 
-    def test_delivery_is_skipped_when_product_exempts_validation(self):
-        scanner = self.build(FakePage())
-        current = self.delivery_product(delivery_validation_required=False)
-        self.assertFalse(scanner._should_configure_delivery(current))
+    async def test_unconfigured_market_stops_before_browser_start(self):
+        page = FakePage()
+        scanner = self.build(page)
+        from unittest.mock import patch
+        from app.monitoring.config.markets import DEFAULT_POSTAL_CODES
 
-    async def test_delivery_failure_does_not_turn_scan_into_technical_failure(self):
+        configured = {country: postal for country, postal in DEFAULT_POSTAL_CODES.items() if country != "NL"}
+        with patch.dict(DEFAULT_POSTAL_CODES, configured, clear=True):
+            result = await scanner.scan(self.delivery_product(country="NL"))
+        self.assertEqual(result.error_code, ScanErrorCode.POSTAL_CODE_REQUIRED)
+        self.assertEqual(result.error_message, "postal_code is required")
+        self.assertFalse(scanner.browser_manager.started)
+        self.assertEqual(page.screenshot_calls, 0)
+
+    async def test_delivery_failure_blocks_product_evidence(self):
         from unittest.mock import AsyncMock, Mock
 
         page = FakePage()
@@ -430,12 +508,12 @@ class DeliverySetupTests(unittest.IsolatedAsyncioTestCase):
 
         observation = await scanner.scan(self.delivery_product())
 
-        self.assertEqual(observation.status, ProductScanStatus.HEALTHY)
+        self.assertEqual(observation.status, ProductScanStatus.TECHNICAL_FAILURE)
         self.assertIsNotNone(observation.error_code)
         self.assertEqual(observation.error_code, "DELIVERY_REGION_UNVERIFIED")
         self.assertIn("delivery", observation.error_message)
 
-    async def test_delivery_timeout_is_reported_but_scan_continues(self):
+    async def test_delivery_timeout_is_reported_and_blocks_product_evidence(self):
         import asyncio
         from unittest.mock import Mock
 
@@ -454,7 +532,7 @@ class DeliverySetupTests(unittest.IsolatedAsyncioTestCase):
 
         observation = await scanner.scan(self.delivery_product())
 
-        self.assertEqual(observation.status, ProductScanStatus.HEALTHY)
+        self.assertEqual(observation.status, ProductScanStatus.TECHNICAL_FAILURE)
         self.assertIn("timed out", observation.error_message)
 
 

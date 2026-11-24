@@ -56,6 +56,21 @@ class ScheduledScanTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(summary.inventory_risk, 0)
         self.assertEqual(summary.technical_failure, 0)
 
+    async def test_live_scheduler_skips_unsupported_products(self):
+        supported = product("supported")
+        other_market = product("other-market")
+        other_market.country = "US"
+        other_platform = product("other-platform")
+        other_platform.platform = "temu"
+        repository = MemoryProductRepository([supported, other_market, other_platform])
+        scan_product = FakeScanProduct()
+
+        result = await HourlyScanRunner(repository, scan_product, live_only=True).run_once()
+
+        self.assertEqual(scan_product.calls, [supported.id])
+        self.assertEqual(result.total, 1)
+        self.assertEqual(other_market.status, ProductScanStatus.NOT_SCANNED)
+
     async def test_run_once_reports_inventory_and_technical_results(self):
         products = [product("DE-001"), product("DE-002"), product("DE-003")]
         repository = MemoryProductRepository(products)

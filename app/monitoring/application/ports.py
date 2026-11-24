@@ -82,7 +82,14 @@ class Scanner(Protocol):
         ...
 
 
+class DuplicateProductError(ValueError):
+    pass
+
+
 class ProductRepository(Protocol):
+    async def create(self, product: Product) -> None:
+        ...
+
     async def get(self, product_id: str) -> Product | None:
         ...
 

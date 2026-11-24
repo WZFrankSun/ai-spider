@@ -2,7 +2,23 @@
 
 每次任务记一条，写明日期、目的、涉及文件、具体变化和测试结果。
 
-- 2026-11-23｜恢复配送邮编设置并加入失败降级｜涉及 `app/monitoring/adapters/playwright_scanner.py`、`app/monitoring/application/real_observation.py` 无关部分、`app/monitoring/domain/models.py`、`app/monitoring/config/catalog_schema.py`、`app/monitoring/adapters/product_catalog.py`、`app/platforms/ecommerce/amazon.yaml`、`tests/test_playwright_scanner.py`｜恢复此前因扫描超时被注释停用的配送校验：重新调用 `_configure_delivery`，新增 20 秒超时上限与失败降级（失败只记诊断和错误码，不把整次扫描变成技术故障），结束后强制关闭配送弹窗避免遮挡加购按钮；修正亚马逊两段式弹窗流程（填邮编 → Bestätigen → Fertig）、严格模式下的多元素定位问题和邮编按国家取值（商品自定义 > 国家默认 > 平台同国配置）；商品目录新增可选 `postal_code` 字段｜141 个测试通过；Amazon Live 验收：`DE-amazon-001` 配送地由 Nuremberg 90403 正确切换为 10115 Berlin 且为 `healthy`，`DE-amazon-negative-001` 为 `inventory_risk`（OCR 命中「Derzeit nicht verfügbar」）且告警保持单条累计，两次扫描均无配送错误，定时扫描全程关闭。
+- 2026-11-24｜开放 Amazon 九站并严格验证默认配送邮编｜涉及站点配置、录入表单与 API、Live 扫描器、Amazon 平台配置、ROI、词库及测试｜统一从所选站点取邮编，忽略历史自定义值及跳过标志；缺邮编或读回不符记技术故障，配送更新后再确认详情页和图像｜150 个测试通过，Chromium 和 Tesseract 在受控 NL 页面验证 1012、截图、ROI 和加购文案；真实 NL 待本机重启后验收。
+
+- 2026-11-24｜调整商品表 Location 顺序和列分隔｜涉及监控页面模板｜表格数据列增加细分隔线，Location 移到 SKU 与商品名之间｜148 个测试通过，Chromium 验证表头、邮编和分隔样式；等待本机重启后执行 Live。
+
+- 2026-11-24｜完善扫描列表与历史展示｜涉及监控模板、商品 API、邮编配置、扫描器及录入测试｜显示扫描资格原因和目标邮编，统一历史商品字段、OCR 与截图样式，放宽桌面布局｜148 个测试通过，Chromium 验证跨站历史和三个窗口宽度；本机重启后两次 Amazon Live 通过：B0CVVHN1GQ 健康，B0DTYXQWXM 为库存风险并复用原告警，四张证据图可读取。
+
+- 2026-11-24｜明确新版 Live 复测前的重启步骤｜涉及 `AGENTS.md`｜先提醒用户重启本机服务，确认后核对进程启动时间再扫描；定时扫描保持关闭｜已按该流程完成意大利健康和德国异常样例复测。
+
+- 2026-11-24｜修复配送更新后空白证据与加购误判｜涉及 Playwright 扫描器、ROI 检查、DOM/OCR 判断、词库和测试｜配送后等待详情页，白图补拍一次；健康要求 DOM 和 OCR 一致，缺按钮还需不可购买文案才告警｜148 个测试通过；Chromium 受控页面读回 IT 邮编 10015；首次 Codex Live 受外网限制，本机重启复测确认 Amazon.it 显示 10015 且健康，Amazon.de 异常样例复用已有告警。
+
+- 2026-11-24｜补齐原有 40 条商品测试资料｜涉及 `cart_monitor.products`｜从 URL 核实 ASIN，保留或依据历史商品页补齐名称，9 条保留核实的店铺和 SKU，31 条使用测试店铺和 SKU，40 条补测试添加人和站点默认邮编｜必需字段无空值，唯一约束通过；重启后核对原商品 ID、URL 和历史截图，未发起扫描。
+
+- 2026-11-24｜执行 002 商品录入迁移并验证持久化｜涉及 `migrations/versions/002_product_entry_fields.py` 和 `cart_monitor.products`｜备份后新增店铺代码、ASIN、添加人和邮编，以平台、站点、店铺代码和 SKU 联合去重；保留旧商品 ID 和扫描、截图、告警关联｜Alembic 版本为 002，结构检查无差异；录入验证记录重启后仍可读取，重复录入返回 409。
+
+- 2026-11-24｜新增商品逐条录入和按店铺筛选｜涉及监控模板、商品 API、仓储、站点配置、扫描资格及 002 迁移｜同店同站同平台 SKU 去重，保留旧 ID 和历史，存储自定义邮编，仅已支持的 Amazon 站点可扫描｜144 个测试通过，Chromium 录入验证和离线迁移 SQL 检查通过；两次 Live 均因网络拒绝停在导航，现有 MySQL 未迁移。
+
+- 2026-11-23｜恢复配送邮编设置并加入失败降级｜涉及 `app/monitoring/adapters/playwright_scanner.py`、`app/monitoring/domain/models.py`、`app/monitoring/config/catalog_schema.py`、`app/monitoring/adapters/product_catalog.py`、`app/platforms/ecommerce/amazon.yaml`、`tests/test_playwright_scanner.py`｜恢复此前因扫描超时被注释停用的配送校验：重新调用 `_configure_delivery`，新增 20 秒超时上限与失败降级（失败只记诊断和错误码，不把整次扫描变成技术故障），结束后强制关闭配送弹窗避免遮挡加购按钮；修正亚马逊两段式弹窗流程（填邮编 → Bestätigen → Fertig）、严格模式下的多元素定位问题和邮编按国家取值（商品自定义 > 国家默认 > 平台同国配置）；商品目录新增可选 `postal_code` 字段｜141 个测试通过；Amazon Live 验收：`DE-amazon-001` 配送地由 Nuremberg 90403 正确切换为 10115 Berlin 且为 `healthy`，`DE-amazon-negative-001` 为 `inventory_risk`（OCR 命中「Derzeit nicht verfügbar」）且告警保持单条累计，两次扫描均无配送错误，定时扫描全程关闭。
 
 - 2026-11-23｜退役旧 Agent 框架和纯视觉方案｜涉及 `app/core/`、`app/tools/`、`app/agents/`、`app/workflows/`、`app/bootstrap.py`、`app/config.py`、`app/platforms/social/`、`examples/`、`.cursor/skills/amazon-screenshot/`（均删除），以及 `app/browser/browser_session.py`、`app/platforms/registry.py`、`pyproject.toml`、`uv.lock`、`.env`、`.env.example`、`.gitignore`、`prd.md`、`SPEC.md`、`TASK.md`、`Tasks.md`、`docs/real-scan-runbook.md`｜加购入口判定统一为 DOM 按钮可用性检查加 Tesseract ROI OCR，弃用多模态 LLM 看图方案；删除工具注册执行框架、LLM 选择器解析、examples 演示脚本和对应 Skill，清理 openai、loguru、pydantic-settings 依赖及 LLM 环境变量；`httpx2` 原本由 openai 间接引入，删除后改由 dev 依赖组显式声明，避免 FastAPI TestClient 失效｜135 个测试通过；Amazon Live 验收：`DE-amazon-001` 为 `healthy`（OCR 命中「In den Einkaufswagen」），`DE-amazon-negative-001` 为 `inventory_risk`（OCR 命中「Derzeit nicht verfügbar」）且告警 `alert-DE-amazon-negative-001` 保持单条累计，定时扫描全程关闭。
 

@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from datetime import datetime, timezone
 
-from PIL import Image
+from PIL import Image, ImageDraw
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from app.monitoring.adapters.artifact_store_local import LocalArtifactStore
@@ -22,6 +22,7 @@ from app.monitoring.domain.models import Product, ProductScanStatus, ScanObserva
 
 def screenshot_bytes():
     image = Image.new("RGB", (100, 80), "white")
+    ImageDraw.Draw(image).rectangle((20, 24, 60, 55), fill="black")
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
     return buffer.getvalue()
@@ -150,6 +151,9 @@ class RealScanFlowTests(unittest.IsolatedAsyncioTestCase):
                 artifact_store=LocalArtifactStore(directory),
                 roi_profile_loader=FakeRoiLoader(),
             )
+            from unittest.mock import AsyncMock
+
+            scanner._configure_delivery = AsyncMock(return_value=None)
             products = MemoryProductRepository([product()])
             scans = MemoryScanRepository()
             alerts = MemoryAlertRepository()

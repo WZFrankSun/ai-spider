@@ -38,7 +38,8 @@ async def start_monitoring_runtime(
     catalog_products = getattr(container, "catalog_products", None)
     if catalog_products:
         for product in catalog_products:
-            await container.products.save(product)
+            if await container.products.get(product.id) is None:
+                await container.products.save(product)
     browser_manager = getattr(scanner, "browser_manager", None)
     if browser_manager is not None:
         await browser_manager.start()
@@ -50,6 +51,7 @@ async def start_monitoring_runtime(
         scan_runner = runner or HourlyScanRunner(
             container.products,
             container.scan_product,
+            live_only=getattr(container, "mode", "real") == "real",
             max_concurrency=config.max_concurrency,
             per_product_timeout_seconds=config.scan_timeout_seconds,
         )

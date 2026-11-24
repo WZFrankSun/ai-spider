@@ -34,7 +34,7 @@ class FakeOcr:
 
 
 class RealObservationTests(unittest.IsolatedAsyncioTestCase):
-    async def test_ocr_match_returns_healthy_and_phrase(self):
+    async def test_ocr_only_returns_phrase_without_healthy_status(self):
         with tempfile.TemporaryDirectory() as directory:
             phrase_file = Path(directory) / "phrases.json"
             phrase_file.write_text(
@@ -59,7 +59,7 @@ class RealObservationTests(unittest.IsolatedAsyncioTestCase):
 
             observation = await factory(product(), None, b"roi")
 
-        self.assertEqual(observation.status, ProductScanStatus.HEALTHY)
+        self.assertEqual(observation.status, ProductScanStatus.TECHNICAL_FAILURE)
         self.assertEqual(observation.matched_phrase, "In den Warenkorb")
         self.assertEqual(observation.confidence, 0.91)
 

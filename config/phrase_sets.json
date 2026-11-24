@@ -18,6 +18,7 @@
       ],
       "unavailable_phrases": [
         "Derzeit nicht verfügbar",
+        "Derzeit nicht verfiigbar",
         "Momentan nicht verfügbar",
         "Vorübergehend nicht verfügbar",
         "Nicht auf Lager",
@@ -112,6 +113,110 @@
         "Out of stock",
         "Sold out",
         "Not available for purchase"
+      ]
+    },
+    {
+      "country": "ES",
+      "platform": "amazon",
+      "page_type": "product_detail",
+      "phrases": [
+        "Añadir a la cesta",
+        "Añadir al carrito",
+        "Agregar al carrito",
+        "Add to basket",
+        "Add to cart"
+      ],
+      "unavailable_phrases": [
+        "No disponible actualmente",
+        "Actualmente no disponible",
+        "Temporalmente sin stock",
+        "Agotado",
+        "Currently unavailable",
+        "Out of stock"
+      ]
+    },
+    {
+      "country": "SE",
+      "platform": "amazon",
+      "page_type": "product_detail",
+      "phrases": [
+        "Lägg i kundvagnen",
+        "Lägg till i kundvagn",
+        "Lägg till i kundvagnen",
+        "Add to basket",
+        "Add to cart"
+      ],
+      "unavailable_phrases": [
+        "För närvarande inte tillgänglig",
+        "Tillfälligt slut",
+        "Slut i lager",
+        "Currently unavailable",
+        "Out of stock"
+      ]
+    },
+    {
+      "country": "BE",
+      "platform": "amazon",
+      "page_type": "product_detail",
+      "phrases": [
+        "Ajouter au panier",
+        "Ajouter au chariot",
+        "In winkelwagen",
+        "Toevoegen aan winkelwagen",
+        "In het winkelwagentje",
+        "Add to basket",
+        "Add to cart"
+      ],
+      "unavailable_phrases": [
+        "Actuellement indisponible",
+        "En rupture de stock",
+        "Momenteel niet beschikbaar",
+        "Tijdelijk niet op voorraad",
+        "Currently unavailable",
+        "Out of stock"
+      ]
+    },
+    {
+      "country": "PL",
+      "platform": "amazon",
+      "page_type": "product_detail",
+      "phrases": [
+        "Dodaj do koszyka",
+        "Dodaj do kosza",
+        "Add to basket",
+        "Add to cart"
+      ],
+      "unavailable_phrases": [
+        "Obecnie niedostępny",
+        "Obecnie niedostępna",
+        "Obecnie niedostępne",
+        "Tymczasowo niedostępny",
+        "Brak w magazynie",
+        "Currently unavailable",
+        "Out of stock"
+      ]
+    },
+    {
+      "country": "NL",
+      "platform": "amazon",
+      "page_type": "product_detail",
+      "phrases": [
+        "In winkelwagen",
+        "In winkelwagentje",
+        "In het winkelwagentje",
+        "Toevoegen aan winkelwagen",
+        "Toevoegen aan winkelwagentje",
+        "Add to basket",
+        "Add to cart"
+      ],
+      "unavailable_phrases": [
+        "Momenteel niet beschikbaar",
+        "Momenteel niet verkrijgbaar",
+        "Tijdelijk niet op voorraad",
+        "Niet op voorraad",
+        "Uitverkocht",
+        "Currently unavailable",
+        "Out of stock"
       ]
     }
   ]

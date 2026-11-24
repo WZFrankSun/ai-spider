@@ -9,6 +9,32 @@ from typing import Any
 from PIL import Image
 
 
+def has_image_content(content: bytes, *, below_header: bool = False) -> bool:
+    """Reject unreadable or nearly uniform evidence, ignoring page chrome when requested."""
+    try:
+        with Image.open(io.BytesIO(content)) as source:
+            if below_header:
+                bottom = min(source.height, 1100)
+                area = source.crop((0, int(bottom * .18), source.width, bottom))
+            else:
+                area = source
+            pixels = area.convert("L")
+            pixels.thumbnail((640, 1024))
+            histogram = pixels.histogram()
+    except (OSError, ValueError):
+        return False
+    minimum = max(1, int(sum(histogram) * .002))
+
+    def percentile(levels):
+        total = 0
+        for level in levels:
+            total += histogram[level]
+            if total >= minimum:
+                return level
+        return 0
+    return percentile(range(255, -1, -1)) - percentile(range(256)) >= 18
+
+
 class RoiError(ValueError):
     """Raised when an ROI cannot be validated or cropped."""
 

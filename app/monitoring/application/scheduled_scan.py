@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 from app.monitoring.application.ports import ProductRepository
 from app.monitoring.application.scan_product import ScanProduct
+from app.monitoring.domain.policies import supports_live_scan
 from app.monitoring.domain.models import Product, ProductScanStatus
 
 
@@ -27,12 +28,14 @@ class HourlyScanRunner:
         scan_product: ScanProduct,
         *,
         max_concurrency: int = 3,
+        live_only: bool = False,
         per_product_timeout_seconds: float = 120.0,
     ):
         if max_concurrency < 1:
             raise ValueError("max_concurrency must be at least 1")
         if per_product_timeout_seconds <= 0:
             raise ValueError("per_product_timeout_seconds must be positive")
+        self.live_only = live_only
         self.products = products
         self.scan_product = scan_product
         self.max_concurrency = max_concurrency
@@ -41,6 +44,8 @@ class HourlyScanRunner:
     async def run_once(self) -> ScanBatchSummary:
         started_at = datetime.now(timezone.utc)
         enabled_products = await self.products.list_enabled()
+        if self.live_only:
+            enabled_products = [product for product in enabled_products if supports_live_scan(product)]
         semaphore = asyncio.Semaphore(self.max_concurrency)
 
         async def run_one(product: Product):

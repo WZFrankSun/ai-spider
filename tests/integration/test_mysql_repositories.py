@@ -65,6 +65,20 @@ class SqlAlchemyRepositoryTests(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         await self.engine.dispose()
 
+    async def test_product_entry_round_trip_and_store_uniqueness(self):
+        from dataclasses import replace
+
+        from app.monitoring.application.ports import DuplicateProductError
+
+        first = replace(product(), store_code="H1-A1", asin="B07Q3DYMRD", added_by="Frank", postal_code="00174")
+        await self.products.create(first)
+        await self.products.create(replace(first, id="different-store", store_code="H4-A1", postal_code="SW1A 1AA"))
+        with self.assertRaises(DuplicateProductError):
+            await self.products.create(replace(first, id="duplicate"))
+        self.assertEqual(await self.products.get(first.id), first)
+        different = await self.products.get("different-store")
+        self.assertEqual(different.postal_code, "SW1A 1AA")
+
     async def test_product_save_get_and_enabled_listing(self):
         current_product = product()
         disabled = product("DE-002")

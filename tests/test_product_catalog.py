@@ -51,7 +51,7 @@ class ProductCatalogTests(unittest.TestCase):
         self.assertEqual(products, [])
 
     def test_rejects_invalid_country(self):
-        path = self.write_catalog([self.product(country="ES")])
+        path = self.write_catalog([self.product(country="US")])
 
         with self.assertRaises(CatalogValidationError):
             JsonProductCatalogLoader().load(path)

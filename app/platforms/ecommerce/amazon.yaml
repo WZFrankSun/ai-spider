@@ -5,11 +5,6 @@ browser:
   viewport:
     width: 1440
     height: 900
-  locale: de-DE
-
-delivery:
-  country: DE
-  postal_code: "10115"
 
 auth:
   required: false
@@ -49,6 +44,14 @@ location:
     - 'button:text-is("Poursuivre les achats")'
     - 'button[alt="Poursuivre les achats"]'
     - 'input[type="submit"][value="Poursuivre les achats"]'
+    - 'button:text-is("Verder winkelen")'
+    - 'input[type="submit"][value="Verder winkelen"]'
+    - 'button:text-is("Doorgaan met winkelen")'
+    - 'input[type="submit"][value="Doorgaan met winkelen"]'
+    - 'button:text-is("Fortsätt handla")'
+    - 'input[type="submit"][value="Fortsätt handla"]'
+    - 'button:text-is("Kontynuuj zakupy")'
+    - 'input[type="submit"][value="Kontynuuj zakupy"]'
   trigger: "#nav-global-location-popover-link"
   postal_input: "#GLUXZipUpdateInput"
   submit: "#GLUXZipUpdate .a-button-input"

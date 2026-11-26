@@ -2,6 +2,8 @@
 
 每次任务记一条，写明日期、目的、涉及文件、具体变化和测试结果。
 
+- 2026-11-26｜M6 重排继续购物与 Cookie 处理顺序｜`app/monitoring/adapters/playwright_scanner.py`、`tests/test_playwright_scanner.py`｜一次继续购物检查后重开原商品链接，再处理 Cookie；移除首页判断，保留导航中断时单次恢复｜173 项测试全部通过；本次提交未执行 Live 验收，待本机服务重启确认。
+
 - 2026-11-26｜M5 延长 Cookie 面板等待并保留诊断｜`app/monitoring/adapters/playwright_scanner.py`、`tests/test_playwright_scanner.py`｜最多等 6 秒，按钮可见即点击；未出现或点击后未消失时继续扫描，并在结果保留阶段和去除查询参数的页面地址｜172 项测试全部通过；未执行 Live 验收。
 
 - 2026-11-26｜M4 按邮编框可见状态等待配送弹窗｜`app/monitoring/adapters/playwright_scanner.py`、`tests/test_playwright_scanner.py`｜最多等待 8 秒，按结果保存诊断截图，兜底跳过隐藏控件和页头搜索框，已有正确邮编时直接进入提交｜168 项测试全部通过；未执行 Live 验收。

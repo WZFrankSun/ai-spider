@@ -472,26 +472,38 @@ class PlaywrightScanner:
             trigger = page.locator(location.get("trigger", "#nav-global-location-popover-link")).first
             details["stage"] = "click trigger"
             await trigger.click(timeout=min(self.timeout_ms, 10_000))
-            await page.wait_for_timeout(1500)
-            details["stage"] = "dialog open"
-            await page.screenshot(path=str(diagnostic_dir / "delivery_dialog.png"), full_page=False)
-            field = page.locator(location.get("postal_input", "#GLUXZipUpdateInput")).first
-            if not await field.count() or not await field.is_visible():
-                field = await self._find_delivery_postal_input(page)
-            details["postal_input_found"] = bool(await field.count() and await field.is_visible())
-            if not details["postal_input_found"]:
+            details["stage"] = "wait for postal input"
+            primary_field = page.locator(location.get("postal_input", "#GLUXZipUpdateInput")).first
+            # 弹窗内容可能稍晚渲染，邮编框最多占用配送总预算 20 秒中的 8 秒。
+            # 主选择器每次最多等 100 毫秒，让不同布局的兜底控件也能及时被发现。
+            try:
+                async with asyncio.timeout(min(self.timeout_ms, 8_000) / 1000):
+                    while True:
+                        try:
+                            await primary_field.wait_for(state="visible", timeout=100)
+                            field = primary_field
+                            break
+                        except PlaywrightTimeoutError:
+                            field = await self._find_delivery_postal_input(page)
+                            if await field.is_visible():
+                                break
+            except TimeoutError:
+                await page.screenshot(path=str(diagnostic_dir / "delivery_input_missing.png"), full_page=False)
                 await self._close_delivery_dialog(page)
                 return self._delivery_error(details, diagnostic_dir, "postal input not found or not visible")
+            details["postal_input_found"] = True
+            await page.screenshot(path=str(diagnostic_dir / "delivery_dialog.png"), full_page=False)
             details["stage"] = "fill postal code"
-            # 亚马逊的邮编框对 fill() 的响应不稳定（会挂在输入校验上），
-            # 逐字输入更可靠；填完直接回车触发校验。
-            try:
-                await field.click(timeout=5000)
-                await field.fill("", timeout=5000)
-            except Exception:
-                pass
-            await field.type(postal_code, delay=60, timeout=8000)
             input_value = await field.input_value()
+            if not postal_values_equal(input_value, postal_code):
+                # 保留原有 5 秒清空和 8 秒输入上限，已有正确值时避开可能阻塞的输入校验。
+                try:
+                    await field.click(timeout=5000)
+                    await field.fill("", timeout=5000)
+                except Exception:
+                    pass
+                await field.type(postal_code, delay=60, timeout=8000)
+                input_value = await field.input_value()
             details["postal_input_value"] = input_value
             if not postal_values_equal(input_value, postal_code):
                 return self._delivery_error(
@@ -590,18 +602,26 @@ class PlaywrightScanner:
         弹窗结构兜底：取弹窗内第一个可见的文本输入框。
         """
         scope = page.locator('[role="dialog"]').last
-        if not await scope.count():
+        has_dialog = bool(await scope.count())
+        if not has_dialog:
             scope = page
         candidates = scope.locator("input, textarea, [role='textbox'], [role='combobox']")
         total = await candidates.count()
         for index in range(total):
             item = candidates.nth(index)
-            haystack = " ".join(
+            haystack = " ".join([
                 (await item.get_attribute(name) or "")
                 for name in ("id", "name", "placeholder", "aria-label", "autocomplete")
-            ).lower()
-            if any(term in haystack for term in ("postal", "postcode", "postleitzahl", "plz", "zip", "postnummer", "codice postale", "kod pocztowy")):
+            ]).lower()
+            if (
+                any(term in haystack for term in ("postal", "postcode", "postleitzahl", "plz", "zip", "postnummer", "codice postale", "kod pocztowy"))
+                and await item.is_visible()
+            ):
                 return item
+
+        # 弹窗尚未出现时，页头搜索框可能已经可见，不能用于结构兜底。
+        if not has_dialog:
+            return page.locator("#__delivery_postal_not_found__")
 
         # 结构性兜底：弹窗内第一个可见的文本输入框。
         for index in range(total):

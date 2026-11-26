@@ -490,7 +490,52 @@ class DeliverySetupTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("actual='SW1A1AB'", error)
         header.wait_for.assert_not_awaited()
 
-    async def check_british_postal_readback(self, readback, *, input_value="SW1A 1AA"):
+    async def test_waits_for_delayed_delivery_input(self):
+        error, header = await self.check_british_postal_readback(
+            "London SW1A1AA", delayed_input=True
+        )
+        self.assertIsNone(error)
+        header.wait_for.assert_awaited_once()
+
+    async def test_missing_delivery_input_reports_failure(self):
+        error, header = await self.check_british_postal_readback(
+            "London SW1A1AA", missing_input=True
+        )
+        self.assertIn("postal input not found or not visible", error)
+        header.wait_for.assert_not_awaited()
+
+    async def test_fallback_skips_hidden_postal_input(self):
+        from unittest.mock import Mock
+
+        hidden = Mock(get_attribute=AsyncMock(return_value="postal"), is_visible=AsyncMock(return_value=False))
+        visible = Mock(get_attribute=AsyncMock(return_value="postal"), is_visible=AsyncMock(return_value=True))
+        candidates = Mock(count=AsyncMock(return_value=2), nth=lambda index: (hidden, visible)[index])
+        dialog = Mock(count=AsyncMock(return_value=1), locator=Mock(return_value=candidates))
+        page = Mock(locator=Mock(return_value=Mock(last=dialog)))
+
+        self.assertIs(await PlaywrightScanner._find_delivery_postal_input(page), visible)
+
+    async def test_already_correct_delivery_input_skips_clear_and_type(self):
+        error, _ = await self.check_british_postal_readback(
+            "London SW1A1AA", input_value="SW1A1AA", already_correct=True
+        )
+        self.assertIsNone(error)
+
+    async def test_fallback_does_not_use_navigation_search_while_dialog_is_loading(self):
+        from unittest.mock import Mock
+
+        search = Mock(get_attribute=AsyncMock(return_value="search"), is_visible=AsyncMock(return_value=True))
+        candidates = Mock(count=AsyncMock(return_value=1), nth=Mock(return_value=search))
+        missing = Mock()
+        dialog = Mock(last=Mock(count=AsyncMock(return_value=0)))
+        page = Mock(locator=Mock(side_effect=[dialog, candidates, missing]))
+
+        self.assertIs(await PlaywrightScanner._find_delivery_postal_input(page), missing)
+
+    async def check_british_postal_readback(
+        self, readback, *, input_value="SW1A 1AA", delayed_input=False,
+        missing_input=False, already_correct=False,
+    ):
         from pathlib import Path
         from tempfile import TemporaryDirectory
         from unittest.mock import Mock
@@ -508,15 +553,37 @@ class DeliverySetupTests(unittest.IsolatedAsyncioTestCase):
         control = AsyncMock()
         control.count.return_value = 1
         control.is_visible.return_value = True
-        control.input_value.return_value = input_value
-        page.locator = lambda selector: Mock(
-            first=header if selector == "#glow-ingress-block" else control
-        )
+        field = AsyncMock()
+        field.count.return_value = 0 if delayed_input or missing_input else 1
+        field.is_visible.return_value = not missing_input
+        field.input_value.side_effect = [input_value] if already_correct else [input_value, input_value]
+
+        async def wait_for_input(*, state, timeout):
+            self.assertEqual(state, "visible")
+            if missing_input:
+                import asyncio
+
+                await asyncio.sleep(1)
+            field.count.return_value = 1
+
+        field.wait_for.side_effect = wait_for_input
+        scanner._find_delivery_postal_input = AsyncMock(return_value=Mock(
+            count=AsyncMock(return_value=0), is_visible=AsyncMock(return_value=False),
+        ))
+        if missing_input:
+            scanner.timeout_ms = 50
+        locators = {"#glow-ingress-block": header, "#GLUXZipUpdateInput": field}
+        page.locator = lambda selector: Mock(first=locators.get(selector, control))
         with TemporaryDirectory() as directory:
             scanner.delivery_diagnostic_root = Path(directory)
             error = await scanner._configure_delivery(
                 page, FakeProfile(), self.delivery_product(country="GB"), "SW1A 1AA"
             )
+        if already_correct:
+            field.fill.assert_not_awaited()
+            field.type.assert_not_awaited()
+        if delayed_input:
+            field.wait_for.assert_awaited()
         return error, header
 
     def test_postal_code_ignores_platform_value_from_another_country(self):

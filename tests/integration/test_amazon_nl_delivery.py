@@ -1,11 +1,12 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 from app.browser.browser_manager import BrowserManager
 from app.monitoring.adapters.artifact_store_local import LocalArtifactStore
 from app.monitoring.adapters.ocr_tesseract import TesseractOcrAdapter
-from app.monitoring.adapters.playwright_scanner import PlaywrightScanner
+from app.monitoring.adapters.playwright_scanner import PlaywrightScanner, ScanErrorCode
 from app.monitoring.adapters.roi import JsonRoiProfileLoader
 from app.monitoring.application.real_observation import RealObservationFactory
 from app.monitoring.domain.models import Product, ProductScanStatus
@@ -41,17 +42,33 @@ function applyPostal() {
 
 class NetherlandsDeliveryTests(unittest.IsolatedAsyncioTestCase):
     async def test_nl_default_postal_readback_and_healthy_evidence(self):
+        await self.check_delivery(readback_matches=True)
+
+    async def test_nl_mismatched_readback_blocks_evidence_and_keeps_diagnostic(self):
+        await self.check_delivery(readback_matches=False)
+
+    async def check_delivery(self, *, readback_matches):
         config = load_monitoring_config()
-        if not config.tesseract_cmd or not Path(config.tesseract_cmd).is_file():
+        if readback_matches and (not config.tesseract_cmd or not Path(config.tesseract_cmd).is_file()):
             self.skipTest("Project Tesseract executable unavailable")
         observed = {}
+        html = PAGE if readback_matches else PAGE.replace(
+            "document.getElementById('GLUXZipUpdateInput').value", "'9999'"
+        )
+        if readback_matches:
+            observation_factory = RealObservationFactory(
+                TesseractOcrAdapter(lang=config.tesseract_languages, tesseract_cmd=config.tesseract_cmd),
+                config.phrase_sets_path,
+            )
+        else:
+            observation_factory = AsyncMock()
 
         class FixtureBrowser(BrowserManager):
             async def create_session(self, **kwargs):
                 session = await super().create_session(**kwargs)
 
                 async def serve(route):
-                    await route.fulfill(content_type="text/html; charset=utf-8", body=PAGE)
+                    await route.fulfill(content_type="text/html; charset=utf-8", body=html)
 
                 await session.page.route("https://www.amazon.nl/dp/**", serve)
                 observed["page"] = session.page
@@ -68,10 +85,7 @@ class NetherlandsDeliveryTests(unittest.IsolatedAsyncioTestCase):
             with tempfile.TemporaryDirectory() as folder:
                 scanner = PlaywrightScanner(
                     browser_manager=browser,
-                    observation_factory=RealObservationFactory(
-                        TesseractOcrAdapter(lang=config.tesseract_languages, tesseract_cmd=config.tesseract_cmd),
-                        config.phrase_sets_path,
-                    ),
+                    observation_factory=observation_factory,
                     roi_profile_loader=JsonRoiProfileLoader(config.roi_profiles_path),
                     artifact_store=LocalArtifactStore(folder),
                     delivery_diagnostic_root=Path(folder) / "delivery",
@@ -80,12 +94,22 @@ class NetherlandsDeliveryTests(unittest.IsolatedAsyncioTestCase):
                     "NL-fixture", "NL", "amazon", "nl-test",
                     "https://www.amazon.nl/dp/B07Q3DYMRD", "product_detail",
                     "amazon_product_detail_nl_buy_box",
-                    postal_code="9999", delivery_validation_required=False,
                 )
                 result = await scanner.scan(item)
+                self.assertEqual(observed["input"], "1012")
+                if not readback_matches:
+                    self.assertEqual(observed["postal"], "Bezorging aan 9999")
+                    self.assertEqual(result.status, ProductScanStatus.TECHNICAL_FAILURE)
+                    self.assertEqual(result.error_code, ScanErrorCode.DELIVERY_REGION_UNVERIFIED)
+                    self.assertIsNone(result.roi_screenshot_path)
+                    observation_factory.assert_not_called()
+                    self.assertTrue(
+                        (Path(folder) / "delivery/NL/amazon/NL-fixture/delivery_failed.png").is_file()
+                    )
+                    return
+
                 self.assertEqual(result.status, ProductScanStatus.HEALTHY, result.error_message)
                 self.assertEqual(result.matched_phrase, "In winkelwagen")
-                self.assertEqual(observed["input"], "1012")
                 self.assertEqual(observed["postal"], "Bezorging aan 1012")
                 self.assertTrue(Path(result.full_screenshot_path).is_file())
                 self.assertTrue(Path(result.roi_screenshot_path).is_file())

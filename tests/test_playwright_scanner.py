@@ -323,9 +323,9 @@ class PlaywrightScannerTests(unittest.IsolatedAsyncioTestCase):
         scanner._configure_delivery = AsyncMock(return_value=None)
 
         current = product()
-        current.delivery_validation_required = True
         observation = await scanner.scan(current)
 
+        scanner._configure_delivery.assert_awaited_once()
         self.assertEqual(observation.status, ProductScanStatus.HEALTHY)
         self.assertEqual(page.screenshot.await_count, 2)
         self.assertEqual([options["state"] for _, options in page.waited_selectors],
@@ -428,7 +428,7 @@ class PlaywrightScannerTests(unittest.IsolatedAsyncioTestCase):
 class DeliverySetupTests(unittest.IsolatedAsyncioTestCase):
     """配送邮编校验失败必须在扫描商品之前停止。"""
 
-    def build(self, page, *, postal_code="10115", delivery_timeout_ms=20000):
+    def build(self, page, *, delivery_timeout_ms=20000):
         manager = FakeBrowserManager(page)
         scanner = PlaywrightScanner(
             browser_manager=manager,
@@ -455,12 +455,7 @@ class DeliverySetupTests(unittest.IsolatedAsyncioTestCase):
         fields.update(kwargs)
         return Product(**fields)
 
-    def test_postal_code_ignores_legacy_product_override(self):
-        scanner = self.build(FakePage())
-        current = self.delivery_product(postal_code="10117")
-        self.assertEqual(scanner._resolve_postal_code(current), "10115")
-
-    def test_postal_code_falls_back_to_country_default(self):
+    def test_postal_code_uses_country_default(self):
         scanner = self.build(FakePage())
         current = self.delivery_product(country="IT")
         self.assertEqual(scanner._resolve_postal_code(current), "00174")
@@ -468,22 +463,29 @@ class DeliverySetupTests(unittest.IsolatedAsyncioTestCase):
     def test_postal_code_ignores_platform_value_from_another_country(self):
         scanner = self.build(FakePage())
         current = self.delivery_product(country="FR")
-        # amazon.yaml 配置的是德国邮编 10115，法国商品不能沿用
         self.assertEqual(scanner._resolve_postal_code(current), "75001")
 
-    async def test_unconfigured_market_stops_before_browser_start(self):
+    async def test_missing_or_unsupported_market_stops_before_browser_start(self):
         page = FakePage()
         scanner = self.build(page)
-        from unittest.mock import patch
-        from app.monitoring.config.markets import DEFAULT_POSTAL_CODES
-
-        configured = {country: postal for country, postal in DEFAULT_POSTAL_CODES.items() if country != "NL"}
-        with patch.dict(DEFAULT_POSTAL_CODES, configured, clear=True):
-            result = await scanner.scan(self.delivery_product(country="NL"))
-        self.assertEqual(result.error_code, ScanErrorCode.POSTAL_CODE_REQUIRED)
-        self.assertEqual(result.error_message, "postal_code is required")
+        for country in ("", "XX"):
+            with self.subTest(country=country):
+                result = await scanner.scan(self.delivery_product(country=country))
+                self.assertEqual(result.status, ProductScanStatus.TECHNICAL_FAILURE)
+                self.assertEqual(result.error_code, ScanErrorCode.POSTAL_CODE_REQUIRED)
+                self.assertIn("站点", result.error_message)
         self.assertFalse(scanner.browser_manager.started)
         self.assertEqual(page.screenshot_calls, 0)
+
+    async def test_non_amazon_does_not_configure_delivery(self):
+        from unittest.mock import AsyncMock
+
+        scanner = self.build(FakePage())
+        scanner._configure_delivery = AsyncMock()
+        result = await scanner.scan(self.delivery_product(platform="ebay"))
+
+        self.assertEqual(result.status, ProductScanStatus.HEALTHY)
+        scanner._configure_delivery.assert_not_awaited()
 
     async def test_delivery_failure_blocks_product_evidence(self):
         from unittest.mock import AsyncMock, Mock

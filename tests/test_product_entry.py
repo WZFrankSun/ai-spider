@@ -18,7 +18,7 @@ class ProductEntryTests(unittest.TestCase):
             first = client.post("/api/products", json=payload)
             self.assertEqual(first.status_code, 201)
             self.assertEqual(first.json()["asin"], "B07Q3DYMRD")
-            self.assertEqual(first.json()["postal_code"], "00174")
+            self.assertNotIn("postal_code", first.json())
             self.assertEqual(first.json()["target_postal_code"], "00174")
             self.assertIsNone(first.json()["scan_unavailable_reason"])
             for country, domain, postal, supported in (
@@ -43,7 +43,7 @@ class ProductEntryTests(unittest.TestCase):
             self.assertNotEqual(first.json()["id"], second.json()["id"])
             no_country = client.post("/api/products", json={key: value for key, value in payload.items() if key != "country"})
             self.assertEqual(no_country.status_code, 422)
-            self.assertIn("postal_code is required", no_country.json()["detail"][0]["msg"])
+            self.assertIn("请选择站点信息，站点决定配送邮编", no_country.json()["detail"][0]["msg"])
             wrong_site = client.post("/api/products", json={**payload, "country": "FR"})
             self.assertEqual(wrong_site.status_code, 422)
             disabled = client.post("/api/products", json={

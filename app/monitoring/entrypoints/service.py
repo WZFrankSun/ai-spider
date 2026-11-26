@@ -38,8 +38,7 @@ async def start_monitoring_runtime(
     catalog_products = getattr(container, "catalog_products", None)
     if catalog_products:
         for product in catalog_products:
-            if await container.products.get(product.id) is None:
-                await container.products.save(product)
+            await container.products.seed(product)
     browser_manager = getattr(scanner, "browser_manager", None)
     if browser_manager is not None:
         await browser_manager.start()

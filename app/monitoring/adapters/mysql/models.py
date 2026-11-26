@@ -21,7 +21,6 @@ class ProductModel(Base):
     store_code: Mapped[str] = mapped_column(String(32), nullable=False, server_default="")
     asin: Mapped[str] = mapped_column(String(10), nullable=False, server_default="")
     added_by: Mapped[str] = mapped_column(String(32), nullable=False, server_default="")
-    postal_code: Mapped[str] = mapped_column(String(24), nullable=False, server_default="")
     url: Mapped[str] = mapped_column(Text, nullable=False)
     page_type: Mapped[str] = mapped_column(String(80), nullable=False)
     roi_profile_id: Mapped[str] = mapped_column(String(120), nullable=False)
@@ -30,6 +29,12 @@ class ProductModel(Base):
     status: Mapped[str] = mapped_column(String(40), default="not_scanned", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class DeletedProductModel(Base):
+    __tablename__ = "deleted_product_ids"
+
+    product_id: Mapped[str] = mapped_column(String(120), primary_key=True)
 
 
 class ScanRunModel(Base):

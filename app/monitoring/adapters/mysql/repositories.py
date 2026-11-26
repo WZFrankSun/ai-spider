@@ -16,7 +16,9 @@ from app.monitoring.domain.models import (
     Scan,
     ScanObservation,
 )
-from app.monitoring.adapters.mysql.models import AlertModel, AlertTransitionModel, ProductModel, ScanRunModel
+from app.monitoring.adapters.mysql.models import (
+    AlertModel, AlertTransitionModel, DeletedProductModel, ProductModel, ScanRunModel,
+)
 
 
 class SqlAlchemyProductRepository:
@@ -27,6 +29,30 @@ class SqlAlchemyProductRepository:
         async with self.session_factory() as session:
             record = await session.get(ProductModel, product_id)
             return _to_product(record) if record else None
+
+    async def list_all(self) -> list[Product]:
+        async with self.session_factory() as session:
+            records = await session.scalars(select(ProductModel).order_by(ProductModel.id))
+            return [_to_product(record) for record in records]
+
+    async def delete_many(self, product_ids: list[str]) -> None:
+        async with self.session_factory() as session, session.begin():
+            result = await session.scalars(
+                select(ProductModel).where(ProductModel.id.in_(product_ids))
+                .order_by(ProductModel.id).with_for_update()
+            )
+            records = result.all()
+            if {record.id for record in records} != set(product_ids):
+                raise KeyError("Selected product no longer exists")
+            for record in records:
+                session.add(DeletedProductModel(product_id=record.id))
+                await session.delete(record)
+
+    async def seed(self, product: Product) -> None:
+        async with self.session_factory() as session, session.begin():
+            existing = await session.get(ProductModel, product.id, with_for_update=True)
+            if existing is None and await session.get(DeletedProductModel, product.id) is None:
+                session.add(_product_record(product, None, datetime.now(timezone.utc)))
 
     async def list_enabled(self) -> list[Product]:
         async with self.session_factory() as session:
@@ -139,7 +165,6 @@ def _product_record(product: Product, existing: ProductModel | None, now: dateti
         store_code=product.store_code,
         asin=product.asin,
         added_by=product.added_by,
-        postal_code=product.postal_code,
         url=product.url,
         page_type=product.page_type,
         roi_profile_id=product.roi_profile_id,
@@ -193,7 +218,6 @@ def _to_product(record: ProductModel) -> Product:
         store_code=record.store_code,
         asin=record.asin,
         added_by=record.added_by,
-        postal_code=record.postal_code,
         url=record.url,
         page_type=record.page_type,
         roi_profile_id=record.roi_profile_id,

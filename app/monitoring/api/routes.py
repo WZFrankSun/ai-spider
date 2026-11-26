@@ -27,15 +27,15 @@ from app.monitoring.domain.models import (
 )
 from app.monitoring.runtime_config import MonitoringRuntimeConfig, load_monitoring_config, monitoring_status
 
-from .schemas import DemoResultRequest, ProductEntryRequest, amazon_asin
-from app.monitoring.application.ports import DuplicateProductError
+from .schemas import DemoResultRequest, ProductBatchDeleteRequest, ProductEntryRequest, amazon_asin
+from app.monitoring.application.ports import DuplicateProductError, ProductRepository
 from app.monitoring.domain.policies import supports_live_scan
 from app.monitoring.config.markets import ENTRY_COUNTRIES, resolve_target_postal_code
 
 
 @dataclass
 class MonitoringContainer:
-    products: MemoryProductRepository
+    products: ProductRepository
     scans: MemoryScanRepository
     alerts: MemoryAlertRepository
     scanner: Any
@@ -60,7 +60,7 @@ class MonitoringContainer:
     @classmethod
     def from_dependencies(
         cls,
-        products: MemoryProductRepository,
+        products: ProductRepository,
         scanner: Any,
         *,
         scans: MemoryScanRepository | None = None,
@@ -133,6 +133,32 @@ def create_monitoring_app(
                 payload["status"] = "technical_failure"
             products.append(payload)
         return products
+
+    @app.get("/api/products/manage")
+    async def manage_products() -> list[dict]:
+        if state.mode != "real":
+            raise HTTPException(404, "商品管理仅在真实模式可用")
+        return [_product_json(product) for product in await state.products.list_all()]
+
+    @app.post("/api/products/batch-delete")
+    async def delete_products(request: ProductBatchDeleteRequest) -> dict:
+        if state.mode != "real":
+            raise HTTPException(404, "商品管理仅在真实模式可用")
+        coordinator = state.scan_product.coordinator
+        locked = []
+        try:
+            for product_id in request.product_ids:
+                coordinator.acquire(product_id)
+                locked.append(product_id)
+            await state.products.delete_many(request.product_ids)
+        except ScanInProgressError as exc:
+            raise HTTPException(409, "选中的商品正在扫描或复查，请等待结束后重试") from exc
+        except KeyError as exc:
+            raise HTTPException(409, "选中的商品已不存在，请刷新列表后重试") from exc
+        finally:
+            for product_id in locked:
+                coordinator.release(product_id)
+        return {"deleted_count": len(request.product_ids)}
 
     @app.post("/api/products", status_code=201)
     async def create_product(request: ProductEntryRequest) -> dict:
@@ -301,7 +327,6 @@ def _product_json(product: Product, *, demo: bool = False) -> dict:
         "sku": product.sku,
         "asin": product.asin or (amazon_asin(product.url) if product.platform == "amazon" else ""),
         "store_code": product.store_code,
-        "postal_code": resolve_target_postal_code(product.country) if product.platform == "amazon" else "",
         "added_by": product.added_by,
         "can_scan": can_scan,
         "scan_unavailable_reason": reason,

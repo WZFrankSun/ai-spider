@@ -1,7 +1,7 @@
 import re
 from urllib.parse import urlsplit
 
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -10,6 +10,18 @@ from app.monitoring.config.markets import AMAZON_DOMAINS, ENTRY_COUNTRIES
 
 class DemoResultRequest(BaseModel):
     result: Literal["healthy", "inventory_risk", "technical_failure"]
+
+
+class ProductBatchDeleteRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+
+    product_ids: list[Annotated[str, Field(min_length=1, max_length=120)]] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_unique_ids(self):
+        if len(set(self.product_ids)) != len(self.product_ids):
+            raise ValueError("商品 ID 不能重复")
+        return self
 
 
 PLATFORM_DOMAINS = {
@@ -39,8 +51,8 @@ class ProductEntryRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_market(self):
-        if self.platform == "amazon" and not self.country:
-            raise ValueError("postal_code is required")
+        if not self.country:
+            raise ValueError("请选择站点信息，站点决定配送邮编")
         if self.country not in ENTRY_COUNTRIES:
             raise ValueError("请选择有效站点")
         url = urlsplit(self.url)

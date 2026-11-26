@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import re
+from contextlib import suppress
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
@@ -85,8 +86,13 @@ class PlaywrightScanner:
         started_at = datetime.now(timezone.utc)
         session = None
         requires_delivery = product.platform == "amazon"
-        if requires_delivery and not self._resolve_postal_code(product):
-            return self._failure(ScanErrorCode.POSTAL_CODE_REQUIRED, "postal_code is required", started_at)
+        target_postal_code = self._resolve_postal_code(product) if requires_delivery else ""
+        if requires_delivery and not target_postal_code:
+            return self._failure(
+                ScanErrorCode.POSTAL_CODE_REQUIRED,
+                "缺少有效的 Amazon 站点，无法确定配送邮编",
+                started_at,
+            )
 
         try:
             try:
@@ -218,7 +224,7 @@ class PlaywrightScanner:
             if requires_delivery:
                 try:
                     delivery_error = await asyncio.wait_for(
-                        self._configure_delivery(page, profile, product),
+                        self._configure_delivery(page, profile, product, target_postal_code),
                         timeout=self.delivery_timeout_ms / 1000,
                     ) or ""
                 except asyncio.TimeoutError:
@@ -228,6 +234,14 @@ class PlaywrightScanner:
                 except Exception as exc:
                     delivery_error = f"delivery setup failed: {type(exc).__name__}: {exc}"
                 if delivery_error:
+                    with suppress(OSError, PlaywrightError, TimeoutError):
+                        directory = self._delivery_diagnostic_dir(product)
+                        directory.mkdir(parents=True, exist_ok=True)
+                        await page.screenshot(
+                            path=str(directory / "delivery_failed.png"),
+                            full_page=False,
+                            timeout=min(self.timeout_ms, 5_000),
+                        )
                     await self._close_delivery_dialog(page)
                     evidence = await self._capture_ready_failure(page, product, started_at)
                     return self._failure(
@@ -409,7 +423,11 @@ class PlaywrightScanner:
         try:
             await page.goto(url, wait_until="domcontentloaded", timeout=self.timeout_ms)
         except PlaywrightError as exc:
-            if "interrupted by another navigation" not in str(exc) or not self._is_marketplace_home(page.url, url):
+            navigation_interrupted = (
+                "interrupted by another navigation" in str(exc)
+                or "net::ERR_ABORTED" in str(exc)
+            )
+            if not navigation_interrupted or not self._is_marketplace_home(page.url, url):
                 raise
             await page.wait_for_load_state("domcontentloaded", timeout=min(self.timeout_ms, 5_000))
             await page.goto(url, wait_until="domcontentloaded", timeout=self.timeout_ms)
@@ -438,12 +456,12 @@ class PlaywrightScanner:
     def _resolve_postal_code(product: Product) -> str:
         return resolve_target_postal_code(product.country)
 
-    async def _configure_delivery(self, page, profile, product) -> str | None:
+    def _delivery_diagnostic_dir(self, product: Product) -> Path:
+        return self.delivery_diagnostic_root / product.country / product.platform / product.id
+
+    async def _configure_delivery(self, page, profile, product, postal_code: str) -> str | None:
         location = getattr(profile, "location", {})
-        postal_code = self._resolve_postal_code(product)
-        if not postal_code:
-            return "postal_code is required"
-        diagnostic_dir = self.delivery_diagnostic_root / product.country / product.platform / product.id
+        diagnostic_dir = self._delivery_diagnostic_dir(product)
         diagnostic_dir.mkdir(parents=True, exist_ok=True)
         details = {"delivery_text_before": "", "postal_input_found": False, "postal_input_value": "", "submit_succeeded": False, "confirm_button_found": False, "delivery_text_after": "", "stage": "start"}
         try:

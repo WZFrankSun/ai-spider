@@ -39,8 +39,6 @@ class Product:
     name: str = ""
     enabled: bool = True
     status: ProductScanStatus = ProductScanStatus.NOT_SCANNED
-    delivery_validation_required: bool = True
-    postal_code: str = ""
     store_code: str = ""
     asin: str = ""
     added_by: str = ""

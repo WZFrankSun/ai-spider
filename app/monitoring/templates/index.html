@@ -52,6 +52,10 @@
     .workspace-tabs { display:flex; gap:6px; margin:16px 0; border-bottom:1px solid var(--line); }
     .workspace-tabs[hidden] { display:none; }
     .workspace-tabs [aria-pressed="true"] { border-bottom:3px solid #146b73; color:#146b73; font-weight:700; }
+    .manage-actions { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin:14px 0; }
+    .delete-products:disabled { background:#eef1f4; border-color:#d5dde5; color:#526274; }
+    .delete-products.selecting { background:#a72332; border-color:#a72332; color:#fff; }
+    .delete-products.selecting:disabled { opacity:.65; }
     .entry-fields { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:16px; margin-bottom:16px; }
     .entry-fields label { display:grid; gap:6px; }
     .entry-fields input, .filters input { width:100%; border:1px solid #cbd5df; border-radius:7px; padding:8px; }
@@ -76,6 +80,7 @@
     <nav class="workspace-tabs" id="workspace-tabs" aria-label="商品工作区" hidden>
       <button type="button" data-view="scan" aria-pressed="true">商品扫描</button>
       <button type="button" data-view="entry" aria-pressed="false">商品录入</button>
+      <button type="button" data-view="manage" aria-pressed="false">商品管理</button>
     </nav>
     <section id="entry-view" hidden>
       <h2>商品录入</h2>
@@ -97,6 +102,27 @@
         <button id="view-created-product" type="button" hidden>查看商品</button>
         <p id="entry-feedback" role="status"></p>
       </form>
+    </section>
+    <section id="manage-view" hidden>
+      <h2>商品管理</h2>
+      <form id="manage-filters" class="filters">
+        <label for="manage-sku">SKU</label><input id="manage-sku" name="sku" type="search">
+        <label for="manage-platform">平台</label><select id="manage-platform" name="platform"></select>
+        <label for="manage-country">站点</label><select id="manage-country" name="country"></select>
+        <label for="manage-status">状态</label><select id="manage-status" name="status"></select>
+        <label for="manage-store">店铺代码</label><select id="manage-store" name="store_code"></select>
+      </form>
+      <div class="manage-actions">
+        <button id="manage-select" type="button" aria-pressed="false">批量选择</button>
+        <button id="manage-delete" class="delete-products" type="button" disabled>删除</button>
+        <span id="manage-count" class="muted" role="status"></span>
+      </div>
+      <div class="table-scroll" tabindex="0" role="region" aria-label="商品管理列表">
+        <table class="wide-table">
+          <thead><tr><th id="manage-select-column" scope="col" hidden>选择</th><th>平台</th><th>店铺代码</th><th>站点</th><th>ASIN</th><th>SKU</th><th>Location</th><th>商品名</th><th>URL</th><th>添加人</th><th>状态</th><th>操作</th></tr></thead>
+          <tbody id="managed-products"></tbody>
+        </table>
+      </div>
     </section>
     <div id="scan-view">
     <section id="monitoring-status" class="monitoring-status"><div id="mode-value">读取运行模式…</div></section>
@@ -280,7 +306,7 @@
 
     function renderHistory() {
       const section = document.querySelector('#sku-history');
-      const product = cachedProducts.find(item => item.id === historyProductId);
+      const product = [...cachedProducts, ...managedProducts].find(item => item.id === historyProductId);
       section.hidden = !product;
       if (!product) return;
       document.querySelector('#sku-history-title').textContent = `扫描历史 · ${productLabel(product)}`;
@@ -294,13 +320,15 @@
         <td class="evidence">${scanEvidence(scan)}</td>
       </tr>`).join('') : '<tr><td colspan="10" class="muted">暂无扫描历史</td></tr>';
     }
-    document.querySelector('#products').addEventListener('click', event => {
+    function openProductHistory(event) {
       const button = event.target.closest('[data-history-product]');
       if (!button) return;
+      switchView('scan');
       historyProductId = button.dataset.historyProduct;
       renderHistory();
       document.querySelector('#sku-history').scrollIntoView();
-    });
+    }
+    document.querySelector('#products').addEventListener('click', openProductHistory);
     document.querySelector('#close-history').addEventListener('click', () => {
       historyProductId = null;
       renderHistory();
@@ -390,9 +418,118 @@
     entryForm.elements.country.innerHTML = '<option value="">请选择站点</option>' + marketOptions;
     document.querySelector('#country-filter').insertAdjacentHTML('beforeend', marketOptions);
 
+    const manageFilters = document.querySelector('#manage-filters');
+    const manageSelect = document.querySelector('#manage-select');
+    const manageDelete = document.querySelector('#manage-delete');
+    const manageBody = document.querySelector('#managed-products');
+    const selectedProductIds = new Set();
+    let managedProducts = [];
+    let managingSelection = false;
+    let deletingProducts = false;
+
+    function updateManagementControls(visibleCount = manageBody.querySelectorAll('[data-managed-id]').length) {
+      manageSelect.setAttribute('aria-pressed', String(managingSelection));
+      manageSelect.textContent = managingSelection ? '退出批量选择' : '批量选择';
+      manageSelect.disabled = deletingProducts;
+      manageDelete.classList.toggle('selecting', managingSelection);
+      manageDelete.disabled = deletingProducts || !managingSelection || selectedProductIds.size === 0;
+      document.querySelector('#manage-count').textContent = managingSelection
+        ? `显示 ${visibleCount} 件 · 已选 ${selectedProductIds.size} 件` : `显示 ${visibleCount} 件`;
+    }
+
+    function renderManagement() {
+      const sku = manageFilters.elements.sku.value.trim().toLowerCase();
+      const filterFields = ['platform', 'country', 'status', 'store_code'];
+      const visible = managedProducts.filter(product =>
+        product.sku.toLowerCase().includes(sku) && filterFields.every(field => {
+          const value = manageFilters.elements[field].value;
+          return !value || (product[field] || '') === value;
+        })
+      );
+      document.querySelector('#manage-select-column').hidden = !managingSelection;
+      manageBody.innerHTML = visible.map(product => `<tr data-managed-id="${esc(product.id)}">
+        ${managingSelection ? `<td><input type="checkbox" data-select-product="${esc(product.id)}"
+          aria-label="${esc('选择 ' + productLabel(product))}" ${selectedProductIds.has(product.id) ? 'checked' : ''}
+          ${deletingProducts ? 'disabled' : ''}></td>` : ''}
+        ${productCells(product, true)}
+        <td>${esc(product.added_by || '未填写')}</td>
+        <td class="record-state"><span class="pill ${esc(statusClass(product.status))}">${labels[product.status] || esc(product.status)}</span></td>
+        <td><button type="button" data-history-product="${esc(product.id)}">查看历史</button></td>
+      </tr>`).join('') || `<tr><td colspan="${managingSelection ? 12 : 11}" class="muted">没有符合条件的商品</td></tr>`;
+      updateManagementControls(visible.length);
+    }
+
+    async function loadManagement() {
+      managedProducts = await json('/api/products/manage');
+      for (const field of ['platform', 'country', 'status', 'store_code']) {
+        const select = manageFilters.elements[field];
+        const previous = select.value;
+        const values = [...new Set(managedProducts.map(product => product[field]).filter(Boolean))].sort();
+        if (previous && !values.includes(previous)) values.push(previous);
+        select.replaceChildren(new Option('全部', ''), ...values.map(value =>
+          new Option(field === 'status' ? labels[value] || value : value, value)
+        ));
+        select.value = previous;
+      }
+      renderManagement();
+    }
+
+    manageFilters.addEventListener('submit', event => event.preventDefault());
+    manageFilters.addEventListener('input', () => {
+      selectedProductIds.clear();
+      renderManagement();
+    });
+    manageSelect.addEventListener('click', () => {
+      managingSelection = !managingSelection;
+      selectedProductIds.clear();
+      renderManagement();
+    });
+    manageBody.addEventListener('click', openProductHistory);
+    manageBody.addEventListener('change', event => {
+      const { selectProduct } = event.target.dataset;
+      if (!selectProduct || deletingProducts) return;
+      if (event.target.checked) selectedProductIds.add(selectProduct);
+      else selectedProductIds.delete(selectProduct);
+      updateManagementControls();
+    });
+    manageDelete.addEventListener('click', async () => {
+      const ids = [...selectedProductIds];
+      if (deletingProducts || !ids.length || !window.confirm(`确定删除选中的 ${ids.length} 件商品吗？`)) return;
+      deletingProducts = true;
+      renderManagement();
+      try {
+        const result = await json('/api/products/batch-delete', {
+          method: 'POST', headers: {'content-type':'application/json'},
+          body: JSON.stringify({product_ids: ids}),
+        });
+        const removed = new Set(ids);
+        managedProducts = managedProducts.filter(product => !removed.has(product.id));
+        selectedProductIds.clear();
+        managingSelection = false;
+        showToast(`已删除 ${result.deleted_count} 件商品`, 'success');
+        try {
+          await Promise.all([loadManagement(), render()]);
+        } catch {
+          showToast('删除已完成，列表刷新失败，请刷新页面', 'warning');
+        }
+      } catch (error) {
+        showToast(`删除失败：${error.name === 'AbortError' ? '请求超时，请刷新确认结果' : errorMessage(error)}`, 'error');
+      } finally {
+        deletingProducts = false;
+        renderManagement();
+      }
+    });
+
     function switchView(view) {
       document.querySelector('#entry-view').hidden = view !== 'entry';
       document.querySelector('#scan-view').hidden = view !== 'scan';
+      document.querySelector('#manage-view').hidden = view !== 'manage';
+      if (view === 'manage') {
+        selectedProductIds.clear();
+        managingSelection = false;
+        renderManagement();
+        loadManagement().catch(error => showToast(`商品列表加载失败：${errorMessage(error)}`, 'error'));
+      }
       document.querySelectorAll('[data-view]').forEach(button => {
         button.setAttribute('aria-pressed', String(button.dataset.view === view));
       });

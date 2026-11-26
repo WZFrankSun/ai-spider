@@ -87,6 +87,15 @@ class DuplicateProductError(ValueError):
 
 
 class ProductRepository(Protocol):
+    async def list_all(self) -> list[Product]:
+        ...
+
+    async def delete_many(self, product_ids: list[str]) -> None:
+        ...
+
+    async def seed(self, product: Product) -> None:
+        ...
+
     async def create(self, product: Product) -> None:
         ...
 

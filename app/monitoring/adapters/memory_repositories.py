@@ -7,6 +7,21 @@ from app.monitoring.domain.models import Alert, AlertStatus, AlertType, Product,
 class MemoryProductRepository:
     def __init__(self, products: list[Product]):
         self._products = {product.id: product for product in products}
+        self._deleted_ids: set[str] = set()
+
+    async def list_all(self) -> list[Product]:
+        return list(self._products.values())
+
+    async def delete_many(self, product_ids: list[str]) -> None:
+        if any(product_id not in self._products for product_id in product_ids):
+            raise KeyError("Selected product no longer exists")
+        self._deleted_ids.update(product_ids)
+        for product_id in product_ids:
+            del self._products[product_id]
+
+    async def seed(self, product: Product) -> None:
+        if product.id not in self._deleted_ids:
+            self._products.setdefault(product.id, product)
 
     async def get(self, product_id: str) -> Product | None:
         return self._products.get(product_id)

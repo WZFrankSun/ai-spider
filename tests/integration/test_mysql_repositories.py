@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.monitoring.adapters.mysql.engine import create_session_factory, create_sqlalchemy_engine
-from app.monitoring.adapters.mysql.models import Base
+from app.monitoring.adapters.mysql.models import Base, ProductModel
 from app.monitoring.adapters.mysql.repositories import (
     SqlAlchemyAlertRepository,
     SqlAlchemyProductRepository,
@@ -70,14 +70,15 @@ class SqlAlchemyRepositoryTests(unittest.IsolatedAsyncioTestCase):
 
         from app.monitoring.application.ports import DuplicateProductError
 
-        first = replace(product(), store_code="H1-A1", asin="B07Q3DYMRD", added_by="Frank", postal_code="00174")
+        self.assertNotIn("postal_code", ProductModel.__table__.columns)
+        first = replace(product(), store_code="H1-A1", asin="B07Q3DYMRD", added_by="Frank")
         await self.products.create(first)
-        await self.products.create(replace(first, id="different-store", store_code="H4-A1", postal_code="SW1A 1AA"))
+        other = replace(first, id="different-store", store_code="H4-A1")
+        await self.products.create(other)
         with self.assertRaises(DuplicateProductError):
             await self.products.create(replace(first, id="duplicate"))
         self.assertEqual(await self.products.get(first.id), first)
-        different = await self.products.get("different-store")
-        self.assertEqual(different.postal_code, "SW1A 1AA")
+        self.assertEqual(await self.products.get(other.id), other)
 
     async def test_product_save_get_and_enabled_listing(self):
         current_product = product()
@@ -91,6 +92,23 @@ class SqlAlchemyRepositoryTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(loaded.sku, current_product.sku)
         self.assertEqual([item.id for item in enabled], [current_product.id])
+
+    async def test_batch_delete_is_atomic_preserves_history_and_prevents_reseeding(self):
+        first, second, survivor = (product(item) for item in ("DE-01", "DE-02", "DE-03"))
+        second.enabled = False
+        for item in (first, second, survivor):
+            await self.products.create(item)
+        await self.scans.add(scan_for(first))
+
+        with self.assertRaises(KeyError):
+            await self.products.delete_many([first.id, "missing"])
+        self.assertEqual({item.id for item in await self.products.list_all()},
+                         {first.id, second.id, survivor.id})
+
+        await self.products.delete_many([first.id, second.id])
+        await SqlAlchemyProductRepository(self.session_factory).seed(first)
+        self.assertEqual([item.id for item in await self.products.list_all()], [survivor.id])
+        self.assertIsNotNone(await self.scans.latest_for(first.id))
 
     async def test_scan_write_and_latest_query(self):
         current_product = product()

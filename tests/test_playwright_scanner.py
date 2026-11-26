@@ -460,6 +460,50 @@ class DeliverySetupTests(unittest.IsolatedAsyncioTestCase):
         current = self.delivery_product(country="IT")
         self.assertEqual(scanner._resolve_postal_code(current), "00174")
 
+    async def test_compact_british_postal_readback_succeeds(self):
+        error, header = await self.check_british_postal_readback("London SW1A1AA")
+        self.assertIsNone(error)
+        header.wait_for.assert_awaited_once_with(state="visible", timeout=5000)
+
+    async def test_wrong_british_postal_readback_reports_visible_text(self):
+        error, _ = await self.check_british_postal_readback("London SW1A1AB")
+        self.assertIn("页头仍显示：London SW1A1AB", error)
+
+    async def test_missing_delivery_header_reports_not_visible(self):
+        error, header = await self.check_british_postal_readback(None)
+        self.assertIn("页头配送栏未显示", error)
+        self.assertNotIn("页头仍显示", error)
+        header.inner_text.assert_not_awaited()
+
+    async def check_british_postal_readback(self, readback):
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        from unittest.mock import Mock
+
+        page = FakePage()
+        scanner = self.build(page)
+        scanner._close_delivery_dialog = AsyncMock()
+        page.wait_for_timeout = AsyncMock()
+        header = Mock(
+            count=AsyncMock(return_value=int(readback is not None)),
+            wait_for=AsyncMock(side_effect=PlaywrightTimeoutError("header hidden") if readback is None else None),
+            is_visible=AsyncMock(return_value=readback is not None),
+            inner_text=AsyncMock(return_value=readback),
+        )
+        control = AsyncMock()
+        control.count.return_value = 1
+        control.is_visible.return_value = True
+        control.input_value.return_value = "SW1A 1AA"
+        page.locator = lambda selector: Mock(
+            first=header if selector == "#glow-ingress-block" else control
+        )
+        with TemporaryDirectory() as directory:
+            scanner.delivery_diagnostic_root = Path(directory)
+            error = await scanner._configure_delivery(
+                page, FakeProfile(), self.delivery_product(country="GB"), "SW1A 1AA"
+            )
+        return error, header
+
     def test_postal_code_ignores_platform_value_from_another_country(self):
         scanner = self.build(FakePage())
         current = self.delivery_product(country="FR")

@@ -18,7 +18,7 @@ from app.monitoring.adapters.ocr_tesseract import OcrError
 from app.monitoring.application.ports import ArtifactMetadata, ArtifactStore
 from app.monitoring.application.real_observation import RealObservationFactory, find_usable_add_to_cart_button
 from app.monitoring.config.markets import AMAZON_LOCALES, resolve_target_postal_code
-from app.monitoring.config.postal_codes import postal_matches
+from app.monitoring.config.postal_codes import postal_matches, postal_values_equal
 from app.monitoring.domain.models import Product, ProductScanStatus, ScanObservation
 from app.platforms.registry import PlatformRegistry
 
@@ -491,9 +491,14 @@ class PlaywrightScanner:
             except Exception:
                 pass
             await field.type(postal_code, delay=60, timeout=8000)
-            details["postal_input_value"] = await field.input_value()
-            if details["postal_input_value"].strip().upper() != postal_code.upper():
-                return self._delivery_error(details, diagnostic_dir, "postal input differs from requested value")
+            input_value = await field.input_value()
+            details["postal_input_value"] = input_value
+            if not postal_values_equal(input_value, postal_code):
+                return self._delivery_error(
+                    details,
+                    diagnostic_dir,
+                    f"postal input differs from requested value: expected={postal_code!r}, actual={input_value!r}",
+                )
             details["stage"] = "click submit"
             submit = page.locator(location.get("submit", "#GLUXZipUpdate .a-button-input")).first
             if not await submit.count() or not await submit.is_visible():

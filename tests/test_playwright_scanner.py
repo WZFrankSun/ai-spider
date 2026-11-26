@@ -475,7 +475,22 @@ class DeliverySetupTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("页头仍显示", error)
         header.inner_text.assert_not_awaited()
 
-    async def check_british_postal_readback(self, readback):
+    async def test_compact_british_postal_input_continues_to_header_readback(self):
+        error, header = await self.check_british_postal_readback(
+            "London SW1A1AA", input_value="SW1A1AA"
+        )
+        self.assertIsNone(error)
+        header.wait_for.assert_awaited_once()
+
+    async def test_wrong_british_postal_input_reports_expected_and_actual_values(self):
+        error, header = await self.check_british_postal_readback(
+            "London SW1A1AA", input_value="SW1A1AB"
+        )
+        self.assertIn("expected='SW1A 1AA'", error)
+        self.assertIn("actual='SW1A1AB'", error)
+        header.wait_for.assert_not_awaited()
+
+    async def check_british_postal_readback(self, readback, *, input_value="SW1A 1AA"):
         from pathlib import Path
         from tempfile import TemporaryDirectory
         from unittest.mock import Mock
@@ -493,7 +508,7 @@ class DeliverySetupTests(unittest.IsolatedAsyncioTestCase):
         control = AsyncMock()
         control.count.return_value = 1
         control.is_visible.return_value = True
-        control.input_value.return_value = "SW1A 1AA"
+        control.input_value.return_value = input_value
         page.locator = lambda selector: Mock(
             first=header if selector == "#glow-ingress-block" else control
         )

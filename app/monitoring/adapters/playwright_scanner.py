@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-import re
 from contextlib import suppress
 from datetime import datetime, timezone
 from enum import Enum
@@ -10,7 +9,7 @@ from pathlib import Path
 from typing import Awaitable, Callable
 from urllib.parse import urlsplit
 
-from playwright.async_api import Error as PlaywrightError, expect
+from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from app.browser.browser_manager import BrowserManager
@@ -19,6 +18,7 @@ from app.monitoring.adapters.ocr_tesseract import OcrError
 from app.monitoring.application.ports import ArtifactMetadata, ArtifactStore
 from app.monitoring.application.real_observation import RealObservationFactory, find_usable_add_to_cart_button
 from app.monitoring.config.markets import AMAZON_LOCALES, resolve_target_postal_code
+from app.monitoring.config.postal_codes import postal_matches
 from app.monitoring.domain.models import Product, ProductScanStatus, ScanObservation
 from app.platforms.registry import PlatformRegistry
 
@@ -525,17 +525,18 @@ class PlaywrightScanner:
                 await self._close_delivery_dialog(page)
                 return self._delivery_error(details, diagnostic_dir, "delivery submit control not found")
             await self._close_delivery_dialog(page)
-            pattern = r"(?<![A-Z0-9])" + r"\s+".join(map(re.escape, postal_code.split())) + r"(?![A-Z0-9])"
-            expected_postal = re.compile(pattern, re.IGNORECASE)
+            details["stage"] = "read delivery header"
+            # 沿用 5 秒的可见等待上限，给页头重绘留出时间，同时受扫描超时约束。
             try:
-                await expect(result).to_be_visible(timeout=min(self.timeout_ms, 5_000))
-                await expect(result).to_have_text(expected_postal, timeout=min(self.timeout_ms, 5_000))
-            except AssertionError:
-                pass
-            details["delivery_text_after"] = (await result.inner_text(timeout=2_000)).strip() if await result.count() else ""
+                await result.wait_for(state="visible", timeout=min(self.timeout_ms, 5_000))
+            except PlaywrightTimeoutError:
+                await page.screenshot(path=str(diagnostic_dir / "delivery_after_submit.png"), full_page=False)
+                return self._delivery_error(details, diagnostic_dir, "页头配送栏未显示")
+            # 沿用 2 秒的读取上限，避免页头在读回时重新渲染导致长时间阻塞。
+            details["delivery_text_after"] = (await result.inner_text(timeout=2_000)).strip()
             await page.screenshot(path=str(diagnostic_dir / "delivery_after_submit.png"), full_page=False)
-            if not await result.is_visible() or not expected_postal.search(details["delivery_text_after"]):
-                return self._delivery_error(details, diagnostic_dir, "requested delivery postal code not observed")
+            if not postal_matches(details["delivery_text_after"], postal_code):
+                return self._delivery_error(details, diagnostic_dir, f"页头仍显示：{details['delivery_text_after']}")
             return None
         except Exception as exc:
             return self._delivery_error(details, diagnostic_dir, f"delivery region setup failed: {type(exc).__name__}")

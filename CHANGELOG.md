@@ -2,6 +2,8 @@
 
 每次任务记一条，写明日期、目的、涉及文件、具体变化和测试结果。
 
+- 2026-11-26｜M3 规范化比较配送输入框邮编｜`app/monitoring/adapters/playwright_scanner.py`、`tests/test_playwright_scanner.py`｜接受等价的无空格英国邮编，输入值不符时报告期望值和实际值｜完整 unittest 套件 163 项全部通过；未执行 Live 验收。
+
 - 2026-11-26｜M2 改用规范化校验页头配送邮编｜`app/monitoring/adapters/playwright_scanner.py`、`tests/test_playwright_scanner.py`｜保留页头可见等待，移除文本正则等待，支持英国无空格邮编，区分页头未显示和读回不符｜修正测试导入错误后，161 项测试全部通过；未执行 Live 验收。
 
 - 2026-11-26｜M1 新增邮编规范化与完整值匹配工具｜`app/monitoring/config/postal_codes.py`、`tests/test_postal_codes.py`｜支持空白、连字符、零宽字符和软连字符，保留页头邮编边界，扫描器尚未接入｜158 项测试全部通过；未执行 Live 验收。

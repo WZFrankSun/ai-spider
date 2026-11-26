@@ -31,6 +31,11 @@ location:
     - 'input[type="submit"][value="Weiter shoppen"]'
     - 'button:has-text("Continua lo shopping")'
     - 'button:has-text("Continuar comprando")'
+    # 西班牙站的继续购物按钮是 "Seguir comprando"，页面提示语里也含这几个词，
+    # 因此只用 text-is 精确匹配，避免命中提示文本所在的容器。
+    - 'button:text-is("Seguir comprando")'
+    - 'button[alt="Seguir comprando"]'
+    - 'input[type="submit"][value="Seguir comprando"]'
     - 'input[value="Continue shopping"]'
     - 'button:text-is("Continua con gli acquisti")'
     - 'button[alt="Continua con gli acquisti"]'

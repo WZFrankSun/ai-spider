@@ -78,8 +78,7 @@
 ---
 
 ## 2. 当前基线
-
-- 分支：`master`，基线提交 `937c36d`（统一 Amazon 站点邮编并新增商品管理）。
+- 基线提交：见 `git log --oneline -1 master`（本规范随代码同步更新）
 - 扫描器：`app/monitoring/adapters/playwright_scanner.py`
 - 站点配置：`app/platforms/ecommerce/amazon.yaml`
 - 默认邮编表：`app/monitoring/config/markets.py`

@@ -2,6 +2,10 @@
 
 每次任务记一条，写明日期、目的、涉及文件、具体变化和测试结果。
 
+- 2026-11-26｜M7 补充西班牙站继续购物文案｜`app/platforms/ecommerce/amazon.yaml`、`tests/test_amazon_markets.py`｜新增 "Seguir comprando" 的 text-is 精确选择器；该站页面提示语也含同样文字，用 has-text 会命中提示容器而非按钮，故禁止该写法｜ES 站 Live 复测待本机服务重启后执行；荷兰站无可见邮编框属独立问题，本次不改。
+
+- 2026-11-26｜M1–M6 定向 Amazon Live 验收｜本机 8000 新版服务｜GB B0DBLS5HD3 读回 SW1A1AA 并判定 healthy，DE B0GD593MMK 读回 10115 并判定 inventory_risk，原开放告警累计 5→6；NL B00CSKGWY8 无可见邮编框，ES B0DZPBTM2S 仍在继续购物中间页，均为 technical_failure｜四个样例各发起一次扫描，定时扫描关闭，未点击加购。
+
 - 2026-11-26｜M6 重排继续购物与 Cookie 处理顺序｜`app/monitoring/adapters/playwright_scanner.py`、`tests/test_playwright_scanner.py`｜一次继续购物检查后重开原商品链接，再处理 Cookie；移除首页判断，保留导航中断时单次恢复｜173 项测试全部通过；本次提交未执行 Live 验收，待本机服务重启确认。
 
 - 2026-11-26｜M5 延长 Cookie 面板等待并保留诊断｜`app/monitoring/adapters/playwright_scanner.py`、`tests/test_playwright_scanner.py`｜最多等 6 秒，按钮可见即点击；未出现或点击后未消失时继续扫描，并在结果保留阶段和去除查询参数的页面地址｜172 项测试全部通过；未执行 Live 验收。

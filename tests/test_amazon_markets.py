@@ -16,6 +16,15 @@ class AmazonMarketTests(unittest.TestCase):
         self.assertTrue(retired_fields.isdisjoint(field.name for field in fields(Product)))
         self.assertTrue(retired_fields.isdisjoint(CatalogProductRecord.model_fields))
 
+    def test_spanish_continue_shopping_selector_matches_button_not_hint(self):
+        from app.platforms.registry import PlatformRegistry
+
+        selectors = PlatformRegistry.load("amazon").location["continue_selectors"]
+        self.assertIn('button:text-is("Seguir comprando")', selectors)
+        # 西班牙站页面提示语里也含 "seguir comprando"，用 has-text 会命中提示
+        # 文本所在的容器而不是按钮本身，因此禁止这种写法。
+        self.assertNotIn('button:has-text("Seguir comprando")', selectors)
+
     def test_nine_markets_have_entry_live_roi_and_phrases(self):
         domains = dict(DE="de", IT="it", FR="fr", ES="es", GB="co.uk",
                        SE="se", BE="com.be", PL="pl", NL="nl")

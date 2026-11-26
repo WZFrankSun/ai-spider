@@ -194,6 +194,7 @@ class PlaywrightScannerTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(observation.status, ProductScanStatus.HEALTHY)
         page.locator.assert_any_call(selector)
+        self.assertEqual([url for url, _ in page.goto_calls], [product().url] * 2)
 
     def test_amazon_continue_selectors_cover_italian_alternate_label(self):
         from app.platforms.registry import PlatformRegistry
@@ -202,30 +203,48 @@ class PlaywrightScannerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('button:text-is("Continua con gli acquisti")', selectors)
         self.assertIn('input[type="submit"][value="Continua con gli acquisti"]', selectors)
 
-    async def test_rejects_cookies_on_market_homepage_and_reopens_product(self):
+    async def test_reopens_original_product_before_cookie_handling_for_each_landing_page(self):
         from unittest.mock import AsyncMock, Mock
 
         current_product = product()
         current_product.url = "https://www.amazon.de/dp/B07Q3DYMRD"
-        page = FakePage()
-        page.url = "https://www.amazon.de/"
-        reject = Mock(
-            click=AsyncMock(),
-            wait_for=AsyncMock(side_effect=[None, None, PlaywrightTimeoutError("already dismissed")]),
-        )
-        page.locator = Mock(return_value=Mock(first=reject))
-        scanner, _ = self.build(page)
-        profile = FakeProfile()
-        profile.cookies = {"reject": "#sp-cc-rejectall-link"}
-        scanner.platform_registry = Mock()
-        scanner.platform_registry.load.return_value = profile
+        for landing in ("https://www.amazon.de/interstitial", "https://www.amazon.de/", current_product.url):
+            with self.subTest(landing=landing):
+                page = FakePage()
+                page.url = current_product.url
+                original_goto = page.goto
 
-        result = await scanner.scan(current_product)
+                async def goto(url, **kwargs):
+                    await original_goto(url, **kwargs)
+                    page.url = url
 
-        self.assertEqual(result.status, ProductScanStatus.HEALTHY)
-        page.locator.assert_any_call("#sp-cc-rejectall-link")
-        reject.click.assert_awaited_once()
-        self.assertEqual([url for url, _ in page.goto_calls], [current_product.url] * 2)
+                async def click_continue(**kwargs):
+                    page.url = landing
+
+                async def reject_cookie(**kwargs):
+                    self.assertEqual(len(page.goto_calls), 2)
+                    self.assertEqual(page.url, current_product.url)
+
+                page.goto = goto
+                button = Mock(count=AsyncMock(return_value=1), is_visible=AsyncMock(return_value=True),
+                              click=AsyncMock(side_effect=click_continue))
+                reject = Mock(click=AsyncMock(side_effect=reject_cookie), wait_for=AsyncMock(
+                    side_effect=[None, None, PlaywrightTimeoutError("already dismissed")]
+                ))
+                page.locator = lambda selector: Mock(first=reject if selector == "#reject" else button)
+                scanner, _ = self.build(page)
+                profile = FakeProfile()
+                profile.location = {"continue_selectors": ["#continue"]}
+                profile.cookies = {"reject": "#reject"}
+                scanner.platform_registry = Mock()
+                scanner.platform_registry.load.return_value = profile
+
+                result = await scanner.scan(current_product)
+
+                self.assertEqual(result.status, ProductScanStatus.HEALTHY, result.error_message)
+                button.click.assert_awaited_once()
+                reject.click.assert_awaited_once()
+                self.assertEqual([url for url, _ in page.goto_calls], [current_product.url] * 2)
 
     async def test_reopens_product_once_after_interrupted_homepage_navigation(self):
         from unittest.mock import AsyncMock
@@ -241,6 +260,21 @@ class PlaywrightScannerTests(unittest.IsolatedAsyncioTestCase):
         await scanner._reopen_product(page, url)
 
         self.assertEqual(page.goto.await_count, 2)
+        page.wait_for_load_state.assert_awaited_once()
+
+    async def test_reopens_product_once_after_aborted_navigation_from_intermediate_page(self):
+        from playwright.async_api import Error
+
+        url = "https://www.amazon.de/dp/B07Q3DYMRD"
+        page = FakePage()
+        page.url = "https://www.amazon.de/interstitial"
+        page.goto = AsyncMock(side_effect=[Error("net::ERR_ABORTED"), None])
+        page.wait_for_load_state = AsyncMock()
+        scanner, _ = self.build(page)
+
+        await scanner._reopen_product(page, url)
+
+        self.assertEqual([call.args[0] for call in page.goto.await_args_list], [url, url])
         page.wait_for_load_state.assert_awaited_once()
 
     async def test_rechecks_cookies_after_product_page_loads(self):

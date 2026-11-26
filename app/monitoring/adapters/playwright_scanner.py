@@ -171,17 +171,16 @@ class PlaywrightScanner:
                 continue_selectors = location.get("continue_selectors", [])
                 await self._click_continue_shopping(page, continue_selectors)
 
+                # 跳转的落点可能是首页或中间页，统一重开原链接再处理商品页弹窗。
+                stage = "reopen original product"
+                await self._reopen_product(page, product.url)
+
                 stage = "reject optional cookies"
                 reject_selector = getattr(profile, "cookies", {}).get("reject")
                 if reject_selector:
                     cookie_diagnostics.append(
                         await self._reject_optional_cookies(page, reject_selector, "首次访问")
                     )
-                    if self._is_marketplace_home(page.url, product.url):
-                        stage = "reopen product from marketplace homepage"
-                        await self._reopen_product(page, product.url)
-                        stage = "continue shopping after reopening product"
-                        await self._click_continue_shopping(page, continue_selectors)
             except Exception as exc:
                 evidence = await self._capture_ready_failure(page, product, started_at)
                 return self._failure(
@@ -435,16 +434,6 @@ class PlaywrightScanner:
             return True, f"{stage}：Cookie 拒绝按钮点击后未消失（{address}）"
         return False, f"{stage}：Cookie 面板已拒绝（{address}）"
 
-    @staticmethod
-    def _is_marketplace_home(current: str, target: str) -> bool:
-        observed = urlsplit(current)
-        requested = urlsplit(target)
-        return (
-            observed.netloc == requested.netloc
-            and observed.path in ("", "/")
-            and requested.path not in ("", "/")
-        )
-
     async def _reopen_product(self, page, url: str) -> None:
         try:
             await page.goto(url, wait_until="domcontentloaded", timeout=self.timeout_ms)
@@ -453,8 +442,9 @@ class PlaywrightScanner:
                 "interrupted by another navigation" in str(exc)
                 or "net::ERR_ABORTED" in str(exc)
             )
-            if not navigation_interrupted or not self._is_marketplace_home(page.url, url):
+            if not navigation_interrupted:
                 raise
+            # 沿用 5 秒上限让抢占导航先稳定，只给重开一次恢复机会。
             await page.wait_for_load_state("domcontentloaded", timeout=min(self.timeout_ms, 5_000))
             await page.goto(url, wait_until="domcontentloaded", timeout=self.timeout_ms)
 

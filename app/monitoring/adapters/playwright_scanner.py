@@ -83,6 +83,19 @@ class PlaywrightScanner:
         self.delivery_timeout_ms = delivery_timeout_ms
 
     async def scan(self, product: Product) -> ScanObservation:
+        # 并发扫描共用扫描器实例，诊断随单次调用传递，避免混入其他商品的记录。
+        cookie_diagnostics: list[tuple[bool, str]] = []
+        observation = await self._scan(product, cookie_diagnostics)
+        if any(abnormal for abnormal, _ in cookie_diagnostics):
+            diagnostics = "；".join(message for _, message in cookie_diagnostics)
+            if observation.status == ProductScanStatus.TECHNICAL_FAILURE:
+                parts = (diagnostics, observation.error_message)
+            else:
+                parts = (observation.error_message, diagnostics)
+            observation.error_message = "；".join(part for part in parts if part)
+        return observation
+
+    async def _scan(self, product: Product, cookie_diagnostics: list[tuple[bool, str]]) -> ScanObservation:
         started_at = datetime.now(timezone.utc)
         session = None
         requires_delivery = product.platform == "amazon"
@@ -161,7 +174,9 @@ class PlaywrightScanner:
                 stage = "reject optional cookies"
                 reject_selector = getattr(profile, "cookies", {}).get("reject")
                 if reject_selector:
-                    await self._reject_optional_cookies(page, reject_selector)
+                    cookie_diagnostics.append(
+                        await self._reject_optional_cookies(page, reject_selector, "首次访问")
+                    )
                     if self._is_marketplace_home(page.url, product.url):
                         stage = "reopen product from marketplace homepage"
                         await self._reopen_product(page, product.url)
@@ -209,7 +224,9 @@ class PlaywrightScanner:
 
             try:
                 if reject_selector:
-                    await self._reject_optional_cookies(page, reject_selector)
+                    cookie_diagnostics.append(
+                        await self._reject_optional_cookies(page, reject_selector, "商品页就绪后")
+                    )
             except Exception as exc:
                 evidence = await self._capture_ready_failure(page, product, started_at)
                 return self._failure(
@@ -399,15 +416,24 @@ class PlaywrightScanner:
                 await button.click(timeout=min(self.timeout_ms, 5_000))
                 return
 
-    async def _reject_optional_cookies(self, page, selector: str) -> None:
+    async def _reject_optional_cookies(self, page, selector: str, stage: str) -> tuple[bool, str]:
         reject = page.locator(selector).first
+        # 只记录可定位页面的地址，避免查询参数或登录凭据进入扫描结果。
+        url = urlsplit(page.url)
+        address = url._replace(netloc=url.netloc.rsplit("@", 1)[-1], query="", fragment="").geturl()
+        # 6 秒覆盖常见的 3–5 秒延迟渲染，按钮一旦可见即可点击。
         try:
-            await reject.wait_for(state="visible", timeout=min(self.timeout_ms, 2_000))
+            await reject.wait_for(state="visible", timeout=min(self.timeout_ms, 6_000))
         except PlaywrightTimeoutError:
-            return
+            return True, f"{stage}：Cookie 面板未出现（{address}）"
+        # 沿用点击和关闭各 5 秒的上限，防止弹窗交互阻塞商品扫描。
         timeout = min(self.timeout_ms, 5_000)
         await reject.click(timeout=timeout)
-        await reject.wait_for(state="hidden", timeout=timeout)
+        try:
+            await reject.wait_for(state="hidden", timeout=timeout)
+        except PlaywrightTimeoutError:
+            return True, f"{stage}：Cookie 拒绝按钮点击后未消失（{address}）"
+        return False, f"{stage}：Cookie 面板已拒绝（{address}）"
 
     @staticmethod
     def _is_marketplace_home(current: str, target: str) -> bool:

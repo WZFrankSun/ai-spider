@@ -265,6 +265,69 @@ class PlaywrightScannerTests(unittest.IsolatedAsyncioTestCase):
         reject.click.assert_awaited_once()
         self.assertEqual(reject.wait_for.await_count, 3)
 
+    async def test_clicks_cookie_button_that_appears_after_three_seconds(self):
+        async def wait_for(*, state, timeout):
+            if state == "visible" and timeout < 3000:
+                raise PlaywrightTimeoutError("button appears after three seconds")
+
+        result, reject = await self.scan_with_cookie_wait(wait_for)
+
+        self.assertEqual(result.status, ProductScanStatus.HEALTHY)
+        self.assertIsNone(result.error_message)
+        reject.wait_for.assert_any_await(state="visible", timeout=6000)
+        self.assertEqual(reject.click.await_count, 2)
+
+    async def test_missing_cookie_panel_is_diagnostic_only(self):
+        async def wait_for(*, state, timeout):
+            raise PlaywrightTimeoutError("no cookie panel")
+
+        result, reject = await self.scan_with_cookie_wait(wait_for)
+
+        self.assertEqual(result.status, ProductScanStatus.HEALTHY)
+        self.assertIn("首次访问：Cookie 面板未出现", result.error_message)
+        self.assertIn("商品页就绪后：Cookie 面板未出现", result.error_message)
+        self.assertIn("https://example.test/product", result.error_message)
+        self.assertNotIn("private-query-value", result.error_message)
+        reject.click.assert_not_awaited()
+
+    async def test_cookie_panel_that_stays_visible_is_diagnostic_only(self):
+        async def wait_for(*, state, timeout):
+            if state == "hidden":
+                raise PlaywrightTimeoutError("panel stayed visible")
+
+        result, reject = await self.scan_with_cookie_wait(wait_for)
+
+        self.assertEqual(result.status, ProductScanStatus.HEALTHY)
+        self.assertIn("Cookie 拒绝按钮点击后未消失", result.error_message)
+        reject.wait_for.assert_any_await(state="hidden", timeout=5000)
+
+    async def test_cookie_diagnostic_precedes_technical_failure(self):
+        async def wait_for(*, state, timeout):
+            raise PlaywrightTimeoutError("no cookie panel")
+
+        result, _ = await self.scan_with_cookie_wait(
+            wait_for, selector_error=PlaywrightTimeoutError("title missing")
+        )
+
+        self.assertEqual(result.error_code, ScanErrorCode.READY_SELECTOR_MISSING)
+        self.assertTrue(result.error_message.startswith("首次访问：Cookie 面板未出现"))
+        self.assertIn("title missing", result.error_message)
+
+    async def scan_with_cookie_wait(self, wait_for, *, selector_error=None):
+        from unittest.mock import Mock
+
+        page = FakePage(selector_error=selector_error)
+        page.url = "https://example.test/product?session=private-query-value#fragment"
+        reject = Mock(wait_for=AsyncMock(side_effect=wait_for), click=AsyncMock())
+        page.locator = Mock(return_value=Mock(first=reject))
+        scanner, _ = self.build(page)
+        scanner.timeout_ms = 30_000
+        profile = FakeProfile()
+        profile.cookies = {"reject": "#sp-cc-rejectall-link"}
+        scanner.platform_registry = Mock()
+        scanner.platform_registry.load.return_value = profile
+        return await scanner.scan(product()), reject
+
     async def test_continue_shopping_failure_preserves_diagnostic_screenshot(self):
         from unittest.mock import AsyncMock, Mock
 

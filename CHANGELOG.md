@@ -2,6 +2,8 @@
 
 每次任务记一条，写明日期、目的、涉及文件、具体变化和测试结果。
 
+- 2026-11-27｜补充核心逻辑注释｜涉及 `app/monitoring/adapters/playwright_scanner.py`、`app/monitoring/application/real_observation.py`、`app/monitoring/application/phrase_matching.py`、`app/monitoring/adapters/ocr_tesseract.py`、`app/monitoring/adapters/roi.py`、`app/platforms/ecommerce/amazon.yaml`｜为弹窗点击与等待设置、DOM 与 OCR 双证据判定、词库归一化与匹配、ROI 裁剪、OCR 放大等核心逻辑补充中文注释，说明各段等待上限的取值依据、两段式配送弹窗的流程、多语言选择器的漏配后果，以及 dom_state 三态中 False 与 None 的安全性差异｜纯注释改动，261 行新增、0 行删除，去掉 docstring 后 AST 与改动前完全一致；182 项测试全部通过；未执行 Live 验收。
+
 - 2026-11-27｜M8、M9 修复后 ES 与 IT 站 Live 验收｜本机 8000 服务，进程启动 10:37:52 晚于代码修改 10:32:43｜ES B0DZPBTM2S 读回 "Anadir a la cesta" 判定 healthy 且无告警；ES B0BSN9VR7K、IT B0BHF3M4TK、IT B0CQMFJ888 均判定 inventory_risk 并各生成一条活动库存告警（累计 1、2、2），证据图可读取｜四个样例各发起一次扫描，定时扫描保持关闭，未点击加购。
 
 - 2026-11-27｜M9 库存风险判定以 DOM 无按钮为前提并补齐多语言不可购词｜`app/monitoring/application/real_observation.py`、`config/phrase_sets.json`、`tests/test_real_observation_cross_validation.py`、`tests/test_phrase_matching.py`｜DOM 确认页面无加购按钮且 OCR 也未读到加购文案时判为库存风险，不再强制要求不可购文案佐证；DOM 无法确认（按钮存在但点不动）仍为技术故障；西班牙站补「Anadir a la Lista de deseos」愿望单文案，意大利站补「Non disponibile」等实际措辞｜182 项测试全部通过；ES、IT 三个样例的 Live 复测通过，ES 健康样例亦为 healthy。

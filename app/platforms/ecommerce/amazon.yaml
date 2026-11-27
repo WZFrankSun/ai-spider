@@ -18,10 +18,18 @@ auth:
     - "#ap_password"
 
 cookies:
+  # Cookie 同意面板的「拒绝」按钮。首选内部 id（跨语言不变），
+  # 后接各站语言的文字兜底。站点没配对应语言时靠内部 id 兜住。
   reject: '#sp-cc-rejectall-link, button:text-is("Ablehnen"), button:text-is("Reject"), button:text-is("Refuser"), button:text-is("Rifiuta")'
 
 location:
   dismiss: "#sp-cc-rejectall-link"
+  # 「继续购物」中转页的按钮。九个站点共用这一个列表，靠顺序挨个试，
+  # 所以新增站点必须补上该站语言的文案，漏配会停在中间页并报
+  # READY_SELECTOR_MISSING。
+  #
+  # 西班牙站要用 text-is 而不是 has-text：该页提示语里也含 "seguir
+  # comprando"，has-text 会命中提示文本所在的容器而不是按钮。
   continue_selectors:
     - 'button[alt="Continue shopping"]'
     - 'button:has-text("Continue shopping")'
@@ -57,6 +65,14 @@ location:
     - 'input[type="submit"][value="Fortsätt handla"]'
     - 'button:text-is("Kontynuuj zakupy")'
     - 'input[type="submit"][value="Kontynuuj zakupy"]'
+  # 配送位置弹窗的两段式流程：
+  #   trigger      点页头「Lieferung nach ...」打开弹窗
+  #   postal_input 填邮编
+  #   submit       填完点「Bestätigen」
+  #   confirm      再点「Fertig」，配送地才真正生效
+  #   result       页头配送栏，用于回读验证是否真的切换成功
+  # 这几个都是亚马逊内部 id，跨站点一致；只有 confirm 是德语文案
+  # （其他语言走代码里的兜底查找）。
   trigger: "#nav-global-location-popover-link"
   postal_input: "#GLUXZipUpdateInput"
   submit: "#GLUXZipUpdate .a-button-input"

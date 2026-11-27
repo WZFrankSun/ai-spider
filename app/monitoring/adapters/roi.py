@@ -103,6 +103,18 @@ class RoiCropper:
         profile: RoiProfile,
         page: object | None = None,
     ) -> bytes:
+        """按 ROI 配置从整页截图里裁出待识别的区域。
+
+        ROI 配置有两种定位方式（见 RoiProfile）：
+          selector —— 用 CSS 选择器在页面上定位元素的包围盒（更精确，
+                      因为拿到的是元素实际渲染区域）；
+          region  —— 用相对坐标（0~1 的比例）裁剪，用于页面结构不稳定、
+                      选择器定位不到的站点。九个亚马逊站点目前都用 selector
+                      #rightCol（购买区）。
+
+        selector 方式需要 page 对象；如果取不到包围盒会退化为按整图比例
+        估算的相对区域。
+        """
         try:
             with Image.open(io.BytesIO(screenshot)) as source:
                 image = source.convert("RGB")

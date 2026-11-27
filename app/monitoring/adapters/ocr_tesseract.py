@@ -55,6 +55,13 @@ class TesseractOcrAdapter:
             raise OcrError("OCR_FAILED", str(exc)) from exc
 
     def _recognize_sync(self, image: ImageRegion) -> OcrResult:
+        """调用 Tesseract 识别。
+
+        用 image_to_data 而不是 image_to_string，是为了同时拿到每个词块和
+        它的置信度；置信度取所有有效值的平均值，作为整体识别质量的参考。
+
+        注意识别的是放大后的副本（见 _scale），存档的证据图仍是原始尺寸。
+        """
         with Image.open(io.BytesIO(image.content)) as source:
             prepared = self._scale(source)
             result: dict[str, Any] = pytesseract.image_to_data(
@@ -63,6 +70,7 @@ class TesseractOcrAdapter:
                 config=self.config,
                 output_type=pytesseract.Output.DICT,
             )
+        # Tesseract 会把识别结果切成多个词块，这里拼成整段文本再交给词库匹配。
         texts = [str(value).strip() for value in result.get("text", []) if str(value).strip()]
         confidences = []
         for value in result.get("conf", []):
@@ -70,6 +78,7 @@ class TesseractOcrAdapter:
                 confidence = float(value)
             except (TypeError, ValueError):
                 continue
+            # 负值置信度表示该块不是文字（Tesseract 对空白的标注）。
             if confidence >= 0:
                 confidences.append(confidence)
         average_confidence = (

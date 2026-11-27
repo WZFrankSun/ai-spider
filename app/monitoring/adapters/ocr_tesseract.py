@@ -17,16 +17,23 @@ class OcrError(RuntimeError):
 
 
 class TesseractOcrAdapter:
+    # 按钮裁剪图通常只有 200x30 像素，Tesseract 在这种尺寸下常把带附加符号的
+    # 字母读错，例如西班牙语 "Añadir" 被读成 "Afiadir"。放大后再识别可稳定
+    # 还原字母本身，归一化阶段再剥离重音符号即可匹配词库。
+    DEFAULT_SCALE = 3
+
     def __init__(
         self,
         lang: str = "eng+deu+ita",
         timeout_seconds: float = 30.0,
         tesseract_cmd: str | None = None,
         config: str = "",
+        scale: int = DEFAULT_SCALE,
     ):
         self.lang = lang
         self.timeout_seconds = timeout_seconds
         self.config = config
+        self.scale = scale
         if tesseract_cmd:
             pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
 
@@ -49,8 +56,9 @@ class TesseractOcrAdapter:
 
     def _recognize_sync(self, image: ImageRegion) -> OcrResult:
         with Image.open(io.BytesIO(image.content)) as source:
+            prepared = self._scale(source)
             result: dict[str, Any] = pytesseract.image_to_data(
-                source,
+                prepared,
                 lang=self.lang,
                 config=self.config,
                 output_type=pytesseract.Output.DICT,
@@ -73,6 +81,22 @@ class TesseractOcrAdapter:
             language=self.lang,
             boxes=None,
         )
+
+    def _scale(self, source: Image.Image) -> Image.Image:
+        """按配置倍数放大图片，供 Tesseract 识别。
+
+        放大只作用于送进 OCR 的副本，存档证据仍是原始尺寸。
+        放大失败时退回原图，不让 OCR 因缩放问题整体失败。
+        """
+        if self.scale <= 1:
+            return source
+        try:
+            return source.convert("RGB").resize(
+                (source.width * self.scale, source.height * self.scale),
+                Image.LANCZOS,
+            )
+        except Exception:
+            return source
 
     @staticmethod
     def tesseract_not_found_error(message: str):

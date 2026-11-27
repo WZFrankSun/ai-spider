@@ -39,6 +39,14 @@ class RuntimeConfigTests(unittest.TestCase):
         self.assertEqual(config.scan_interval_seconds, 3600)
         self.assertEqual(config.max_concurrency, 3)
 
+    def test_ocr_scale_defaults_to_three_and_can_be_overridden(self):
+        self.assertEqual(load_monitoring_config({}).ocr_scale, 3)
+        self.assertEqual(load_monitoring_config({"OCR_SCALE": "5"}).ocr_scale, 5)
+
+    def test_ocr_scale_must_be_positive(self):
+        with self.assertRaises(ValueError):
+            load_monitoring_config({"OCR_SCALE": "0"})
+
     def test_path_values_are_resolved_relative_to_project_root(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

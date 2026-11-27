@@ -63,6 +63,7 @@ def build_monitoring_container(config: MonitoringRuntimeConfig) -> MonitoringCon
             lang=config.tesseract_languages,
             timeout_seconds=config.scan_timeout_seconds,
             tesseract_cmd=config.tesseract_cmd,
+            scale=config.ocr_scale,
         ),
         phrase_loader,
     )

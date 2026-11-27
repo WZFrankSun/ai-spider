@@ -2,9 +2,11 @@
 
 每次任务记一条，写明日期、目的、涉及文件、具体变化和测试结果。
 
-- 2026-11-27｜M9 库存风险判定以 DOM 无按钮为前提并补齐多语言不可购词｜`app/monitoring/application/real_observation.py`、`config/phrase_sets.json`、`tests/test_real_observation_cross_validation.py`、`tests/test_phrase_matching.py`｜DOM 确认页面无加购按钮且 OCR 也未读到加购文案时判为库存风险，不再强制要求不可购文案佐证；DOM 无法确认（按钮存在但点不动）仍为技术故障；西班牙站补「Anadir a la Lista de deseos」愿望单文案，意大利站补「Non disponibile」等实际措辞｜182 项测试全部通过；ES、IT 三个样例的 Live 复测待本机服务重启后执行。
+- 2026-11-27｜M8、M9 修复后 ES 与 IT 站 Live 验收｜本机 8000 服务，进程启动 10:37:52 晚于代码修改 10:32:43｜ES B0DZPBTM2S 读回 "Anadir a la cesta" 判定 healthy 且无告警；ES B0BSN9VR7K、IT B0BHF3M4TK、IT B0CQMFJ888 均判定 inventory_risk 并各生成一条活动库存告警（累计 1、2、2），证据图可读取｜四个样例各发起一次扫描，定时扫描保持关闭，未点击加购。
 
-- 2026-11-27｜M8 放大 ROI 后再做 OCR 识别｜`app/monitoring/adapters/ocr_tesseract.py`、`app/monitoring/runtime_config.py`、`app/monitoring/bootstrap.py`、`.env.example`、`tests/test_ocr_adapter.py`、`tests/test_runtime_config.py`｜按钮裁剪图约 200x30 像素，Tesseract 常把带附加符号的字母读错（西班牙语 "Añadir" 读成 "Afiadir"），改为识别前放大 3 倍，归一化阶段再剥离重音即可匹配词库；放大只作用于送进 OCR 的副本，存档证据仍为原始尺寸，缩放失败退回原图；倍数经 OCR_SCALE 配置，默认 3｜历史图实测：ES 按钮图 5 张由不匹配变为匹配，FR、GB 结果不变，DE 不可购词仍匹配；ES 站 Live 复测待本机服务重启后执行。
+- 2026-11-27｜M9 库存风险判定以 DOM 无按钮为前提并补齐多语言不可购词｜`app/monitoring/application/real_observation.py`、`config/phrase_sets.json`、`tests/test_real_observation_cross_validation.py`、`tests/test_phrase_matching.py`｜DOM 确认页面无加购按钮且 OCR 也未读到加购文案时判为库存风险，不再强制要求不可购文案佐证；DOM 无法确认（按钮存在但点不动）仍为技术故障；西班牙站补「Anadir a la Lista de deseos」愿望单文案，意大利站补「Non disponibile」等实际措辞｜182 项测试全部通过；ES、IT 三个样例的 Live 复测通过，ES 健康样例亦为 healthy。
+
+- 2026-11-27｜M8 放大 ROI 后再做 OCR 识别｜`app/monitoring/adapters/ocr_tesseract.py`、`app/monitoring/runtime_config.py`、`app/monitoring/bootstrap.py`、`.env.example`、`tests/test_ocr_adapter.py`、`tests/test_runtime_config.py`｜按钮裁剪图约 200x30 像素，Tesseract 常把带附加符号的字母读错（西班牙语 "Añadir" 读成 "Afiadir"），改为识别前放大 3 倍，归一化阶段再剥离重音即可匹配词库；放大只作用于送进 OCR 的副本，存档证据仍为原始尺寸，缩放失败退回原图；倍数经 OCR_SCALE 配置，默认 3｜历史图实测：ES 按钮图 5 张由不匹配变为匹配，FR、GB 结果不变，DE 不可购词仍匹配；ES 站 Live 复测通过。
 
 - 2026-11-27｜M7 西班牙站 Live 复测｜本机 8000 服务，进程启动 18:07:32 晚于代码修改 18:06:06｜两个样例均已越过继续购物中间页并进入真实商品页，配送地成功设为 Madrid 28001，Cookie 面板已拒绝，但因 OCR 把 "Añadir" 读成 "Afiadir" 导致 DOM_OCR_MISMATCH 与 OCR_AVAILABILITY_UNVERIFIED，均为 technical_failure 且未产生库存告警；据此追加 M8 放大 ROI 修复｜定时扫描关闭，未点击加购。
 

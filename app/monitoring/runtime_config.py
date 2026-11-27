@@ -30,6 +30,7 @@ class MonitoringRuntimeConfig:
     scan_timeout_seconds: float = 120.0
     tesseract_cmd: str | None = None
     tesseract_languages: str = "eng+deu+ita"
+    ocr_scale: int = 3
 
 
 def load_monitoring_config(
@@ -79,6 +80,7 @@ def load_monitoring_config(
         scan_timeout_seconds=timeout,
         tesseract_cmd=values.get("TESSERACT_CMD", "").strip() or None,
         tesseract_languages=values.get("TESSERACT_LANGUAGES", "eng+deu+ita").strip() or "eng+deu+ita",
+        ocr_scale=_positive_int(values, "OCR_SCALE", 3),
     )
 
 

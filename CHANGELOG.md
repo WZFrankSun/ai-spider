@@ -2,6 +2,10 @@
 
 每次任务记一条，写明日期、目的、涉及文件、具体变化和测试结果。
 
+- 2026-11-27｜M8 放大 ROI 后再做 OCR 识别｜`app/monitoring/adapters/ocr_tesseract.py`、`app/monitoring/runtime_config.py`、`app/monitoring/bootstrap.py`、`.env.example`、`tests/test_ocr_adapter.py`、`tests/test_runtime_config.py`｜按钮裁剪图约 200x30 像素，Tesseract 常把带附加符号的字母读错（西班牙语 "Añadir" 读成 "Afiadir"），改为识别前放大 3 倍，归一化阶段再剥离重音即可匹配词库；放大只作用于送进 OCR 的副本，存档证据仍为原始尺寸，缩放失败退回原图；倍数经 OCR_SCALE 配置，默认 3｜历史图实测：ES 按钮图 5 张由不匹配变为匹配，FR、GB 结果不变，DE 不可购词仍匹配；ES 站 Live 复测待本机服务重启后执行。
+
+- 2026-11-27｜M7 西班牙站 Live 复测｜本机 8000 服务，进程启动 18:07:32 晚于代码修改 18:06:06｜两个样例均已越过继续购物中间页并进入真实商品页，配送地成功设为 Madrid 28001，Cookie 面板已拒绝，但因 OCR 把 "Añadir" 读成 "Afiadir" 导致 DOM_OCR_MISMATCH 与 OCR_AVAILABILITY_UNVERIFIED，均为 technical_failure 且未产生库存告警；据此追加 M8 放大 ROI 修复｜定时扫描关闭，未点击加购。
+
 - 2026-11-26｜M7 补充西班牙站继续购物文案｜`app/platforms/ecommerce/amazon.yaml`、`tests/test_amazon_markets.py`｜新增 "Seguir comprando" 的 text-is 精确选择器；该站页面提示语也含同样文字，用 has-text 会命中提示容器而非按钮，故禁止该写法｜ES 站 Live 复测待本机服务重启后执行；荷兰站无可见邮编框属独立问题，本次不改。
 
 - 2026-11-26｜M1–M6 定向 Amazon Live 验收｜本机 8000 新版服务｜GB B0DBLS5HD3 读回 SW1A1AA 并判定 healthy，DE B0GD593MMK 读回 10115 并判定 inventory_risk，原开放告警累计 5→6；NL B00CSKGWY8 无可见邮编框，ES B0DZPBTM2S 仍在继续购物中间页，均为 technical_failure｜四个样例各发起一次扫描，定时扫描关闭，未点击加购。

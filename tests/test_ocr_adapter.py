@@ -29,6 +29,38 @@ class OcrAdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.language, "eng+deu+ita")
         image_to_data.assert_called_once()
 
+    async def test_scales_image_before_recognition(self):
+        adapter = TesseractOcrAdapter(lang="eng+deu+ita", scale=3)
+        fake_data = {"text": ["Add to cart"], "conf": ["96"]}
+
+        with patch("pytesseract.image_to_data", return_value=fake_data) as image_to_data:
+            await adapter.recognize(image_region())
+
+        prepared = image_to_data.call_args.args[0]
+        self.assertEqual(prepared.size, (60, 60))
+
+    async def test_scale_one_keeps_original_size(self):
+        adapter = TesseractOcrAdapter(lang="eng+deu+ita", scale=1)
+        fake_data = {"text": ["Add to cart"], "conf": ["96"]}
+
+        with patch("pytesseract.image_to_data", return_value=fake_data) as image_to_data:
+            await adapter.recognize(image_region())
+
+        prepared = image_to_data.call_args.args[0]
+        self.assertEqual(prepared.size, (20, 20))
+
+    async def test_scaling_failure_falls_back_to_original_image(self):
+        adapter = TesseractOcrAdapter(lang="eng+deu+ita", scale=3)
+        fake_data = {"text": ["Add to cart"], "conf": ["96"]}
+
+        with patch.object(Image.Image, "resize", side_effect=OSError("resize failed")):
+            with patch("pytesseract.image_to_data", return_value=fake_data) as image_to_data:
+                result = await adapter.recognize(image_region())
+
+        self.assertEqual(result.text, "Add to cart")
+        prepared = image_to_data.call_args.args[0]
+        self.assertEqual(prepared.size, (20, 20))
+
     async def test_maps_missing_tesseract_binary_to_ocr_error(self):
         adapter = TesseractOcrAdapter()
 

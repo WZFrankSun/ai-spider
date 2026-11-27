@@ -138,8 +138,18 @@ class CrossValidationTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(result.status, ProductScanStatus.INVENTORY_RISK)
 
-    async def test_missing_dom_and_missing_ocr_is_technical_failure(self):
-        result=await self.factory("Buy now")(product(), FakePage(count=0), b"roi")
+    async def test_missing_dom_and_missing_ocr_is_inventory_risk(self):
+        # DOM 确认页面里没有加购按钮，OCR 也没读到加购文案。
+        # 两者都不是识别环节失败，按 SPEC「有效扫描未识别到加入购物车入口」
+        # 判为库存风险，而不是无法判定。
+        result = await self.factory("Buy now")(product(), FakePage(count=0), b"roi")
+        self.assertEqual(result.status, ProductScanStatus.INVENTORY_RISK)
+
+    async def test_unverifiable_dom_stays_technical_failure(self):
+        # DOM 探测无法确认（按钮存在但点不动）时结果不可判定，不能判库存风险。
+        page = FakePage(count=1)
+        page.locator_value.blocked = True
+        result = await self.factory("Buy now")(product(), page, b"roi")
         self.assertEqual(result.status, ProductScanStatus.TECHNICAL_FAILURE)
 
 

@@ -63,7 +63,11 @@
         "Out of stock",
         "Sold out",
         "Currently not available",
-        "Not available for purchase"
+        "Not available for purchase",
+        "Non disponibile",
+        "Non sappiamo se o quando l'articolo sara di nuovo disponibile",
+        "Aggiungi alla Lista",
+        "Aggiungi alta Lista"
       ]
     },
     {
@@ -132,7 +136,9 @@
         "Temporalmente sin stock",
         "Agotado",
         "Currently unavailable",
-        "Out of stock"
+        "Out of stock",
+        "Anadir a la Lista de deseos",
+        "Anadir a la Lista"
       ]
     },
     {

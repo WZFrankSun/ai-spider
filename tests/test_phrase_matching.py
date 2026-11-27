@@ -43,6 +43,32 @@ class PhraseMatchingTests(unittest.TestCase):
 
         self.assertIn("In den Warenkorb", phrases)
 
+    def test_spanish_unavailable_set_covers_wishlist_only_listing(self):
+        # 西班牙站无货时只显示愿望单按钮，不写任何不可购买文案，
+        # 因此愿望单文案必须算作不可购买证据。
+        loader = JsonPhraseSetLoader("config/phrase_sets.json")
+
+        phrases = loader.load(
+            country="ES", platform="amazon", page_type="product_detail", unavailable=True
+        )
+        result = match_add_to_cart(
+            "Ver todas las opciones de compra Anadir a la Lista de deseos", phrases
+        )
+
+        self.assertTrue(result.matched)
+
+    def test_italian_unavailable_set_covers_short_unavailable_wording(self):
+        # 意大利站页面写的是短形式 "Non disponibile."，
+        # 词库原来只有带前缀或后缀的长形式。
+        loader = JsonPhraseSetLoader("config/phrase_sets.json")
+
+        phrases = loader.load(
+            country="IT", platform="amazon", page_type="product_detail", unavailable=True
+        )
+        result = match_add_to_cart("Non disponibile.", phrases)
+
+        self.assertTrue(result.matched)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -62,6 +62,11 @@ class RealObservationFactory:
         elif page is not None and dom_state is None:
             error_code = "DOM_BUTTON_UNVERIFIED"
             error_message = "could not confirm whether the add-to-cart button is usable"
+        elif dom_state is False and not match.matched:
+            # DOM 已确认页面里没有可用的加购按钮，且 OCR 也没读到加购文案，
+            # 可以判定为库存风险。部分站点（如西班牙站）在无货时只显示愿望单
+            # 按钮而不写任何不可购买文案，此时是否判风险由 DOM 结论决定。
+            status = ProductScanStatus.INVENTORY_RISK
         elif unavailable and not match.matched:
             status = ProductScanStatus.INVENTORY_RISK
         else:
